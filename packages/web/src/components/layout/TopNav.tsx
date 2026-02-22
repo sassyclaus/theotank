@@ -1,18 +1,19 @@
 import { Link, NavLink } from "react-router";
-import { Menu, User } from "lucide-react";
+import { Menu, X, User } from "lucide-react";
 import { navLinks } from "@/data/navigation";
 import { Button } from "@/components/ui/button";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 interface TopNavProps {
-  onOpenMobileMenu: () => void;
+  mobileMenuOpen: boolean;
+  onToggleMobileMenu: () => void;
 }
 
-export function TopNav({ onOpenMobileMenu }: TopNavProps) {
+export function TopNav({ mobileMenuOpen, onToggleMobileMenu }: TopNavProps) {
   const isMobile = useIsMobile();
 
   return (
-    <header className="sticky top-0 z-40 border-b border-surface bg-nav-bg">
+    <header className="border-b border-surface bg-nav-bg">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 lg:px-8">
         <Link to="/" className="font-serif text-2xl font-bold text-text-primary">
           TheoTank
@@ -48,10 +49,14 @@ export function TopNav({ onOpenMobileMenu }: TopNavProps) {
             <Button
               variant="ghost"
               size="icon"
-              onClick={onOpenMobileMenu}
-              aria-label="Open menu"
+              onClick={onToggleMobileMenu}
+              aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
             >
-              <Menu className="h-5 w-5" />
+              {mobileMenuOpen ? (
+                <X className="h-5 w-5" />
+              ) : (
+                <Menu className="h-5 w-5" />
+              )}
             </Button>
           )}
         </div>

@@ -5,6 +5,7 @@ import Roundtable from "@/pages/Roundtable";
 import Research from "@/pages/Research";
 import Library from "@/pages/Library";
 import Theologians from "@/pages/Theologians";
+import TheologianDetail from "@/pages/TheologianDetail";
 import NotFound from "@/pages/NotFound";
 
 export default function App() {
@@ -16,6 +17,7 @@ export default function App() {
         <Route path="research" element={<Research />} />
         <Route path="library" element={<Library />} />
         <Route path="theologians" element={<Theologians />} />
+        <Route path="theologians/:slug" element={<TheologianDetail />} />
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>

@@ -1,15 +1,26 @@
 import { useState } from "react";
-import { Outlet } from "react-router";
+import { Outlet, useLocation } from "react-router";
+import { useEffect } from "react";
 import { TopNav } from "./TopNav";
 import { MobileMenu } from "./MobileMenu";
 
 export function Layout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const location = useLocation();
+
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [location.pathname]);
 
   return (
     <div className="min-h-screen bg-bg">
-      <TopNav onOpenMobileMenu={() => setMobileMenuOpen(true)} />
-      <MobileMenu open={mobileMenuOpen} onOpenChange={setMobileMenuOpen} />
+      <div className="sticky top-0 z-40">
+        <TopNav
+          mobileMenuOpen={mobileMenuOpen}
+          onToggleMobileMenu={() => setMobileMenuOpen((prev) => !prev)}
+        />
+        <MobileMenu open={mobileMenuOpen} onClose={() => setMobileMenuOpen(false)} />
+      </div>
       <main>
         <Outlet />
       </main>

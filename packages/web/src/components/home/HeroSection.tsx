@@ -11,15 +11,17 @@ export function HeroSection() {
         <span className="italic">convened around your question.</span>
       </h1>
 
-      <div className="relative mt-10">
-        <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
-          <Search className="h-5 w-5 text-text-secondary/50" />
+      <div className="mt-10">
+        <div className="relative">
+          <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
+            <Search className="h-5 w-5 text-text-secondary/50" />
+          </div>
+          <input
+            type="text"
+            placeholder="What's on your mind?"
+            className="w-full rounded-xl border border-surface bg-white py-4 pl-12 pr-4 text-base text-text-primary shadow-sm placeholder:text-text-secondary/60 transition-all focus:border-teal focus:outline-none focus:ring-2 focus:ring-teal/20"
+          />
         </div>
-        <input
-          type="text"
-          placeholder="What's on your mind?"
-          className="w-full rounded-xl border border-surface bg-white py-4 pl-12 pr-4 text-base text-text-primary shadow-sm placeholder:text-text-secondary/60 transition-all focus:border-teal focus:outline-none focus:ring-2 focus:ring-teal/20"
-        />
         <p className="mt-3 text-sm text-text-secondary">
           Try: &ldquo;Did the early church believe in penal substitutionary atonement?&rdquo;
         </p>
