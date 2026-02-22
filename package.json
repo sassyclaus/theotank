@@ -1,0 +1,5 @@
+{
+  "name": "theotank",
+  "private": true,
+  "workspaces": ["packages/*"]
+}
