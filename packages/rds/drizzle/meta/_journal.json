@@ -36,6 +36,20 @@
       "when": 1771906054529,
       "tag": "0004_purple_sir_ram",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1771948179005,
+      "tag": "0005_overconfident_darkhawk",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1771950448100,
+      "tag": "0006_chubby_mathemanic",
+      "breakpoints": true
     }
   ]
 }

@@ -1,0 +1,14 @@
+[
+  {
+    "toolType": "ask",
+    "version": "1.0.0",
+    "description": "Initial Ask algorithm — serial perspective generation with synthesis, using GPT-5 Mini",
+    "config": {
+      "defaultModels": {
+        "perspective": { "model": "gpt-5-mini-2025-08-07", "provider": "openai" },
+        "synthesis": { "model": "gpt-5-mini-2025-08-07", "provider": "openai" }
+      }
+    },
+    "isActive": true
+  }
+]

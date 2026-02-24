@@ -4,6 +4,7 @@ import { clerkAuth } from "./middleware/auth";
 import { adminAuth } from "./middleware/admin-auth";
 import theologians from "./routes/theologians";
 import teams from "./routes/teams";
+import results from "./routes/results";
 import admin from "./routes/admin";
 
 const app = new Hono();
@@ -27,6 +28,7 @@ app.use("/api/admin/*", adminAuth);
 app.route("/api/admin", admin);
 app.route("/api/theologians", theologians);
 app.route("/api/teams", teams);
+app.route("/api/results", results);
 
 const port = Number(process.env.PORT) || 3001;
 console.log(`API server listening on :${port}`);

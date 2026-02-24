@@ -3,6 +3,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { modeConfig, type RoundtableMode } from "@/data/mock-roundtable";
 import { useNativeTeams, useMyTeams } from "@/hooks/useTeams";
+import { useCreateResult } from "@/hooks/useResults";
 import { ModeTabBar } from "./ModeTabBar";
 import { AskPanel } from "./AskPanel";
 import { PollPanel } from "./PollPanel";
@@ -10,22 +11,33 @@ import { ReviewPanel } from "./ReviewPanel";
 import { TeamSelector } from "./TeamSelector";
 import { TeamMemberPreview } from "./TeamMemberPreview";
 import { TeamManagementDialog } from "./TeamManagementDialog";
-import { DeliberationOverlay } from "./DeliberationOverlay";
+import { DeliberationView } from "./DeliberationView";
+
+type WorkspacePhase =
+  | { phase: "idle" }
+  | { phase: "submitting" }
+  | { phase: "deliberating"; resultId: string }
+  | { phase: "error"; message: string };
 
 export function RoundtableWorkspace() {
-  // ── Mode state ───────────────────────────────────────────────────
+  // ── Phase state ─────────────────────────────────────────────────
+  const [wsPhase, setWsPhase] = useState<WorkspacePhase>({ phase: "idle" });
+
+  // ── Mode state ──────────────────────────────────────────────────
   const [activeMode, setActiveMode] = useState<RoundtableMode>("ask");
   const [fadingOut, setFadingOut] = useState(false);
   const pendingMode = useRef<RoundtableMode | null>(null);
 
-  // ── Shared state ─────────────────────────────────────────────────
+  // ── Shared state ────────────────────────────────────────────────
   const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
-  const [isDeliberating, setIsDeliberating] = useState(false);
   const [manageTeamsOpen, setManageTeamsOpen] = useState(false);
 
-  // ── Team data ──────────────────────────────────────────────────
+  // ── Team data ───────────────────────────────────────────────────
   const { data: nativeTeams } = useNativeTeams();
   const { data: myTeams } = useMyTeams();
+
+  // ── Result mutation ─────────────────────────────────────────────
+  const createResult = useCreateResult();
 
   // Set default to first native team once loaded
   useEffect(() => {
@@ -44,20 +56,20 @@ export function RoundtableWorkspace() {
     return null;
   })();
 
-  // ── Ask state ────────────────────────────────────────────────────
+  // ── Ask state ───────────────────────────────────────────────────
   const [askQuestion, setAskQuestion] = useState("");
   const [showNudge, setShowNudge] = useState(false);
   const nudgeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ── Poll state ───────────────────────────────────────────────────
+  // ── Poll state ──────────────────────────────────────────────────
   const [pollQuestion, setPollQuestion] = useState("");
   const [pollOptions, setPollOptions] = useState(["", ""]);
 
-  // ── Review state ─────────────────────────────────────────────────
+  // ── Review state ────────────────────────────────────────────────
   const [reviewFileName, setReviewFileName] = useState<string | null>(null);
   const [reviewFocusPrompt, setReviewFocusPrompt] = useState("");
 
-  // ── Ask nudge debounce ───────────────────────────────────────────
+  // ── Ask nudge debounce ──────────────────────────────────────────
   useEffect(() => {
     if (nudgeTimer.current) clearTimeout(nudgeTimer.current);
     if (askQuestion.length > 30) {
@@ -70,7 +82,7 @@ export function RoundtableWorkspace() {
     };
   }, [askQuestion]);
 
-  // ── Tab transition ───────────────────────────────────────────────
+  // ── Tab transition ──────────────────────────────────────────────
   const handleModeChange = useCallback(
     (mode: RoundtableMode) => {
       if (mode === activeMode || fadingOut) return;
@@ -85,7 +97,7 @@ export function RoundtableWorkspace() {
     [activeMode, fadingOut],
   );
 
-  // ── Poll helpers ─────────────────────────────────────────────────
+  // ── Poll helpers ────────────────────────────────────────────────
   const handleOptionChange = useCallback(
     (index: number, value: string) => {
       const next = [...pollOptions];
@@ -108,14 +120,42 @@ export function RoundtableWorkspace() {
     [pollOptions],
   );
 
-  // ── CTA handler ──────────────────────────────────────────────────
-  const handleSubmit = useCallback(() => {
-    setIsDeliberating(true);
-    setTimeout(() => setIsDeliberating(false), 3000);
+  // ── CTA handler ─────────────────────────────────────────────────
+  const handleSubmit = useCallback(async () => {
+    if (!selectedTeam || activeMode !== "ask" || !askQuestion.trim()) return;
+
+    setWsPhase({ phase: "submitting" });
+
+    try {
+      const result = await createResult.mutateAsync({
+        toolType: "ask",
+        teamId: selectedTeam,
+        question: askQuestion.trim(),
+      });
+      setWsPhase({ phase: "deliberating", resultId: result.id });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Submission failed";
+      setWsPhase({ phase: "error", message });
+    }
+  }, [selectedTeam, activeMode, askQuestion, createResult]);
+
+  const handleReset = useCallback(() => {
+    setAskQuestion("");
+    setShowNudge(false);
+    setWsPhase({ phase: "idle" });
   }, []);
 
+  // ── Render deliberation view ────────────────────────────────────
+  if (wsPhase.phase === "deliberating") {
+    return (
+      <DeliberationView resultId={wsPhase.resultId} onReset={handleReset} />
+    );
+  }
+
+  const isSubmitting = wsPhase.phase === "submitting";
+
   const isCTADisabled =
-    isDeliberating ||
+    isSubmitting ||
     selectedTeam === null ||
     (activeMode === "ask" && askQuestion.trim().length === 0) ||
     (activeMode === "poll" && pollQuestion.trim().length === 0) ||
@@ -124,13 +164,25 @@ export function RoundtableWorkspace() {
   return (
     <section className="mx-auto max-w-3xl px-4 pb-12">
       <Card className="relative overflow-hidden">
-        {isDeliberating && <DeliberationOverlay />}
         <CardContent className="space-y-5">
           <ModeTabBar activeMode={activeMode} onModeChange={handleModeChange} />
 
           <p className="text-sm text-text-secondary">
             {modeConfig[activeMode].description}
           </p>
+
+          {/* Error banner */}
+          {wsPhase.phase === "error" && (
+            <div className="rounded-lg border border-terracotta/30 bg-terracotta/5 px-4 py-3">
+              <p className="text-sm text-terracotta">{wsPhase.message}</p>
+              <button
+                className="mt-1 text-xs text-terracotta underline"
+                onClick={() => setWsPhase({ phase: "idle" })}
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
 
           {/* Panel region with min-height to prevent layout jank */}
           <div
@@ -183,7 +235,7 @@ export function RoundtableWorkspace() {
             disabled={isCTADisabled}
             onClick={handleSubmit}
           >
-            {modeConfig[activeMode].cta}
+            {isSubmitting ? "Submitting..." : modeConfig[activeMode].cta}
           </Button>
         </CardContent>
       </Card>

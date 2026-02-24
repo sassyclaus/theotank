@@ -7,6 +7,13 @@ import type {
   UpdateTeamPayload,
 } from "@/data/team-types";
 import type {
+  CreateResultPayload,
+  ResultSummary,
+  ResultDetail,
+  ProgressLogEntry,
+  AskContentResponse,
+} from "@/data/result-types";
+import type {
   AdminNativeTeam,
   CreateNativeTeamPayload,
   UpdateNativeTeamPayload,
@@ -55,6 +62,30 @@ export async function updateTeam(
 
 export async function deleteTeam(id: string): Promise<void> {
   return apiClient.delete<void>(`/api/teams/${id}`);
+}
+
+// ── Results ─────────────────────────────────────────────────────────
+
+export async function createResult(
+  payload: CreateResultPayload,
+): Promise<{ id: string; status: string; toolType: string; title: string; createdAt: string }> {
+  return apiClient.post("/api/results", payload);
+}
+
+export async function listResults(): Promise<ResultSummary[]> {
+  return apiClient.get<ResultSummary[]>("/api/results");
+}
+
+export async function getResult(id: string): Promise<ResultDetail> {
+  return apiClient.get<ResultDetail>(`/api/results/${id}`);
+}
+
+export async function getResultProgress(id: string): Promise<ProgressLogEntry[]> {
+  return apiClient.get<ProgressLogEntry[]>(`/api/results/${id}/progress`);
+}
+
+export async function getResultContent(id: string): Promise<AskContentResponse> {
+  return apiClient.get<AskContentResponse>(`/api/results/${id}/content`);
 }
 
 // ── Admin Teams ─────────────────────────────────────────────────────

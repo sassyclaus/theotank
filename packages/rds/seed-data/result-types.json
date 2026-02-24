@@ -1,0 +1,278 @@
+[
+  {
+    "kind": "ask",
+    "version": 1,
+    "description": "Initial Ask result type — panel perspectives with synthesized conclusion",
+    "contentSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "required": ["tool", "summary", "perspectives"],
+      "properties": {
+        "tool": { "const": "ask" },
+        "summary": { "type": "string" },
+        "perspectives": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["theologian", "perspective"],
+            "properties": {
+              "theologian": { "$ref": "#/$defs/resultTheologian" },
+              "perspective": { "type": "string" }
+            }
+          }
+        }
+      },
+      "$defs": {
+        "resultTheologian": {
+          "type": "object",
+          "required": ["name", "initials", "dates", "tradition", "color"],
+          "properties": {
+            "name": { "type": "string" },
+            "initials": { "type": "string" },
+            "dates": { "type": "string" },
+            "tradition": { "type": "string" },
+            "color": { "type": "string" }
+          }
+        }
+      }
+    },
+    "previewSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "required": ["type", "conclusion"],
+      "properties": {
+        "type": { "const": "ask" },
+        "conclusion": { "type": "string" }
+      }
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "required": ["question"],
+      "properties": {
+        "question": { "type": "string" }
+      }
+    },
+    "isActive": true
+  },
+  {
+    "kind": "poll",
+    "version": 1,
+    "description": "Initial Poll result type — aggregated theologian votes with trend breakdowns",
+    "contentSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "required": ["tool", "summary", "totalPolled", "options", "centuryTrend", "theologianSelections"],
+      "properties": {
+        "tool": { "const": "poll" },
+        "summary": { "type": "string" },
+        "totalPolled": { "type": "integer" },
+        "options": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["label", "percentage", "count"],
+            "properties": {
+              "label": { "type": "string" },
+              "percentage": { "type": "number" },
+              "count": { "type": "integer" }
+            }
+          }
+        },
+        "centuryTrend": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["era", "options"],
+            "properties": {
+              "era": { "type": "string" },
+              "options": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["label", "percentage"],
+                  "properties": {
+                    "label": { "type": "string" },
+                    "percentage": { "type": "number" }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "theologianSelections": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["theologian", "selection", "justification"],
+            "properties": {
+              "theologian": { "$ref": "#/$defs/resultTheologian" },
+              "selection": { "type": "string" },
+              "justification": { "type": "string" }
+            }
+          }
+        }
+      },
+      "$defs": {
+        "resultTheologian": {
+          "type": "object",
+          "required": ["name", "initials", "dates", "tradition", "color"],
+          "properties": {
+            "name": { "type": "string" },
+            "initials": { "type": "string" },
+            "dates": { "type": "string" },
+            "tradition": { "type": "string" },
+            "color": { "type": "string" }
+          }
+        }
+      }
+    },
+    "previewSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "required": ["type", "bars"],
+      "properties": {
+        "type": { "const": "poll" },
+        "bars": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["label", "percentage"],
+            "properties": {
+              "label": { "type": "string" },
+              "percentage": { "type": "number" }
+            }
+          }
+        }
+      }
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "required": ["question", "options"],
+      "properties": {
+        "question": { "type": "string" },
+        "options": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "isActive": true
+  },
+  {
+    "kind": "review",
+    "version": 1,
+    "description": "Initial Review result type — theologian assessments with grades and feedback",
+    "contentSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "required": ["tool", "grade", "summary", "reactions"],
+      "properties": {
+        "tool": { "const": "review" },
+        "grade": { "type": "string" },
+        "summary": { "type": "string" },
+        "reactions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["theologian", "grade", "assessment", "strengths", "weaknesses"],
+            "properties": {
+              "theologian": { "$ref": "#/$defs/resultTheologian" },
+              "grade": { "type": "string" },
+              "assessment": { "type": "string" },
+              "strengths": {
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "weaknesses": {
+                "type": "array",
+                "items": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
+      "$defs": {
+        "resultTheologian": {
+          "type": "object",
+          "required": ["name", "initials", "dates", "tradition", "color"],
+          "properties": {
+            "name": { "type": "string" },
+            "initials": { "type": "string" },
+            "dates": { "type": "string" },
+            "tradition": { "type": "string" },
+            "color": { "type": "string" }
+          }
+        }
+      }
+    },
+    "previewSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "required": ["type", "grade"],
+      "properties": {
+        "type": { "const": "review" },
+        "grade": { "type": "string" }
+      }
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "required": ["title"],
+      "properties": {
+        "title": { "type": "string" },
+        "documentKey": { "type": "string" },
+        "documentText": { "type": "string" }
+      }
+    },
+    "isActive": true
+  },
+  {
+    "kind": "research",
+    "version": 1,
+    "description": "Initial Research result type — single-theologian deep-dive with citations",
+    "contentSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "required": ["tool", "theologianName", "responseText", "citations"],
+      "properties": {
+        "tool": { "const": "research" },
+        "theologianName": { "type": "string" },
+        "responseText": { "type": "string" },
+        "citations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "marker", "source", "originalText", "translation"],
+            "properties": {
+              "id": { "type": "string" },
+              "marker": { "type": "string" },
+              "source": { "type": "string" },
+              "originalText": { "type": "string" },
+              "translation": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "previewSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "required": ["type", "citedSourcesCount"],
+      "properties": {
+        "type": { "const": "research" },
+        "citedSourcesCount": { "type": "integer" }
+      }
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "required": ["question"],
+      "properties": {
+        "question": { "type": "string" }
+      }
+    },
+    "isActive": true
+  }
+]
