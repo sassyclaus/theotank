@@ -1,7 +1,8 @@
 import { useMemo } from "react";
 import { useParams, Link } from "react-router";
 import { ArrowLeft, BookOpen, Users } from "lucide-react";
-import { getTheologianBySlug, allTheologians, ERA_RANGES } from "@/data/mock-theologians";
+import { useTheologian, useTheologians } from "@/hooks/useTheologians";
+import { ERA_RANGES } from "@/data/mock-theologians";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { TraditionBadge } from "@/components/theologians/TraditionBadge";
@@ -9,21 +10,44 @@ import { TheologianCard } from "@/components/theologians/TheologianCard";
 
 export default function TheologianDetail() {
   const { slug } = useParams<{ slug: string }>();
-  const theologian = slug ? getTheologianBySlug(slug) : undefined;
+  const { data: theologian, isLoading, error } = useTheologian(slug);
+  const { data: allTheologians } = useTheologians();
 
   const related = useMemo(() => {
-    if (!theologian) return [];
+    if (!theologian || !allTheologians) return [];
     return allTheologians
       .filter(
         (t) =>
           t.slug !== theologian.slug &&
           (t.era === theologian.era ||
-            (theologian.tradition !== null && t.tradition === theologian.tradition)),
+            (theologian.tradition !== null &&
+              t.tradition === theologian.tradition)),
       )
       .slice(0, 4);
-  }, [theologian]);
+  }, [theologian, allTheologians]);
 
-  if (!theologian) {
+  if (isLoading) {
+    return (
+      <div className="mx-auto max-w-4xl px-4 py-12 lg:px-8">
+        <div className="mb-8 h-4 w-32 animate-pulse rounded bg-surface" />
+        <div className="flex items-start gap-5">
+          <div className="h-20 w-20 animate-pulse rounded-full bg-surface" />
+          <div className="flex-1">
+            <div className="h-9 w-64 animate-pulse rounded bg-surface" />
+            <div className="mt-2 h-5 w-40 animate-pulse rounded bg-surface" />
+            <div className="mt-2 h-5 w-56 animate-pulse rounded bg-surface" />
+          </div>
+        </div>
+        <div className="mt-8 space-y-3">
+          <div className="h-4 w-full animate-pulse rounded bg-surface" />
+          <div className="h-4 w-full animate-pulse rounded bg-surface" />
+          <div className="h-4 w-3/4 animate-pulse rounded bg-surface" />
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !theologian) {
     return (
       <div className="mx-auto max-w-4xl px-4 py-16 text-center">
         <h1 className="font-serif text-3xl font-bold">Theologian Not Found</h1>
@@ -50,6 +74,7 @@ export default function TheologianDetail() {
     color,
     bio,
     keyWorks,
+    imageUrl,
     hasResearch,
     nativeTeams,
   } = theologian;
@@ -67,12 +92,20 @@ export default function TheologianDetail() {
 
       {/* Profile header */}
       <div className="flex items-start gap-5">
-        <div
-          className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full text-xl font-bold text-white"
-          style={{ backgroundColor: color }}
-        >
-          {initials}
-        </div>
+        {imageUrl ? (
+          <img
+            src={imageUrl}
+            alt={`Portrait of ${name}`}
+            className="h-20 w-20 shrink-0 rounded-full object-cover"
+          />
+        ) : (
+          <div
+            className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full text-xl font-bold text-white"
+            style={{ backgroundColor: color }}
+          >
+            {initials}
+          </div>
+        )}
         <div>
           <h1 className="font-serif text-3xl font-bold lg:text-4xl">{name}</h1>
           <p className="mt-1 text-text-secondary">
@@ -80,9 +113,11 @@ export default function TheologianDetail() {
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             {tradition && <TraditionBadge tradition={tradition} />}
-            <span className="text-xs text-text-secondary">
-              {era} Era &middot; {ERA_RANGES[era].label}
-            </span>
+            {era && (
+              <span className="text-xs text-text-secondary">
+                {era} Era &middot; {ERA_RANGES[era].label}
+              </span>
+            )}
             {hasResearch && (
               <span className="rounded-full bg-oxblood-light px-2.5 py-0.5 text-xs font-medium text-oxblood">
                 Research Available
@@ -101,7 +136,10 @@ export default function TheologianDetail() {
           <h2 className="font-serif text-xl font-semibold">Key Works</h2>
           <ul className="mt-3 space-y-2">
             {keyWorks.map((work) => (
-              <li key={work} className="flex items-center gap-2 text-sm text-text-secondary">
+              <li
+                key={work}
+                className="flex items-center gap-2 text-sm text-text-secondary"
+              >
                 <BookOpen className="h-4 w-4 shrink-0 text-teal" />
                 {work}
               </li>
@@ -116,7 +154,10 @@ export default function TheologianDetail() {
           <h2 className="font-serif text-xl font-semibold">Groups</h2>
           <ul className="mt-3 space-y-2">
             {nativeTeams.map((team) => (
-              <li key={team} className="flex items-center gap-2 text-sm text-text-secondary">
+              <li
+                key={team}
+                className="flex items-center gap-2 text-sm text-text-secondary"
+              >
                 <Users className="h-4 w-4 shrink-0 text-teal" />
                 {team}
               </li>
@@ -126,14 +167,15 @@ export default function TheologianDetail() {
       )}
 
       {/* CTA card */}
-      <Card className="mt-10 bg-teal-light border-teal/20">
+      <Card className="mt-10 border-teal/20 bg-teal-light">
         <CardContent className="flex flex-col items-center gap-4 py-6 text-center sm:flex-row sm:text-left">
           <div className="flex-1">
             <h3 className="font-serif text-lg font-semibold text-text-primary">
               Ask {name.split(" ")[0]} a Question
             </h3>
             <p className="mt-1 text-sm text-text-secondary">
-              Convene a roundtable panel featuring {name.split(" ")[0]}'s perspective alongside other theological voices.
+              Convene a roundtable panel featuring {name.split(" ")[0]}'s
+              perspective alongside other theological voices.
             </p>
           </div>
           <Button asChild>
@@ -155,7 +197,8 @@ export default function TheologianDetail() {
                   Research Available
                 </h3>
                 <p className="mt-1 text-sm text-text-secondary">
-                  Explore verified primary source research on {name} with inline citations.
+                  Explore verified primary source research on {name} with inline
+                  citations.
                 </p>
               </div>
             </div>
@@ -169,7 +212,9 @@ export default function TheologianDetail() {
       {/* Related Theologians */}
       {related.length > 0 && (
         <div className="mt-12">
-          <h2 className="font-serif text-xl font-semibold">Related Theologians</h2>
+          <h2 className="font-serif text-xl font-semibold">
+            Related Theologians
+          </h2>
           <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
             {related.map((t) => (
               <TheologianCard key={t.slug} theologian={t} />

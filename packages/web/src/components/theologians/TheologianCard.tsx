@@ -8,19 +8,27 @@ interface TheologianCardProps {
 }
 
 export function TheologianCard({ theologian }: TheologianCardProps) {
-  const { slug, name, initials, born, died, tradition, color, tagline, hasResearch } =
+  const { slug, name, initials, born, died, tradition, color, tagline, imageUrl, hasResearch } =
     theologian;
 
   return (
     <Link to={`/theologians/${slug}`} className="block">
       <Card className="h-full p-4 transition-shadow hover:shadow-md">
         <div className="flex items-start gap-3">
-          <div
-            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white"
-            style={{ backgroundColor: color }}
-          >
-            {initials}
-          </div>
+          {imageUrl ? (
+            <img
+              src={imageUrl}
+              alt={`Portrait of ${name}`}
+              className="h-12 w-12 shrink-0 rounded-full object-cover"
+            />
+          ) : (
+            <div
+              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white"
+              style={{ backgroundColor: color }}
+            >
+              {initials}
+            </div>
+          )}
           <div className="min-w-0 flex-1">
             <h3 className="font-serif text-base font-semibold leading-tight text-text-primary">
               {name}

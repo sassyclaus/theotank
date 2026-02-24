@@ -1,0 +1,53 @@
+services:
+  postgres:
+    image: postgres:17
+    container_name: theotank-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: theotank
+      POSTGRES_PASSWORD: theotank_local
+      POSTGRES_DB: theotank
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U theotank"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    container_name: theotank-minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_API_CORS_ALLOW_ORIGIN: "http://localhost:5173"
+    volumes:
+      - miniodata:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 minioadmin minioadmin &&
+      mc mb --ignore-existing local/theotank &&
+      mc anonymous set download local/theotank/portraits &&
+      echo 'Bucket ready'
+      "
+
+volumes:
+  pgdata:
+  miniodata:

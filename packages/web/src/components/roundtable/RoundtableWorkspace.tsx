@@ -2,11 +2,14 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { modeConfig, type RoundtableMode } from "@/data/mock-roundtable";
+import { useNativeTeams, useMyTeams } from "@/hooks/useTeams";
 import { ModeTabBar } from "./ModeTabBar";
 import { AskPanel } from "./AskPanel";
 import { PollPanel } from "./PollPanel";
 import { ReviewPanel } from "./ReviewPanel";
 import { TeamSelector } from "./TeamSelector";
+import { TeamMemberPreview } from "./TeamMemberPreview";
+import { TeamManagementDialog } from "./TeamManagementDialog";
 import { DeliberationOverlay } from "./DeliberationOverlay";
 
 export function RoundtableWorkspace() {
@@ -16,8 +19,30 @@ export function RoundtableWorkspace() {
   const pendingMode = useRef<RoundtableMode | null>(null);
 
   // ── Shared state ─────────────────────────────────────────────────
-  const [selectedTeam, setSelectedTeam] = useState("all");
+  const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
   const [isDeliberating, setIsDeliberating] = useState(false);
+  const [manageTeamsOpen, setManageTeamsOpen] = useState(false);
+
+  // ── Team data ──────────────────────────────────────────────────
+  const { data: nativeTeams } = useNativeTeams();
+  const { data: myTeams } = useMyTeams();
+
+  // Set default to first native team once loaded
+  useEffect(() => {
+    if (selectedTeam === null && nativeTeams && nativeTeams.length > 0) {
+      setSelectedTeam(nativeTeams[0].id);
+    }
+  }, [selectedTeam, nativeTeams]);
+
+  // Resolve selected team members for preview
+  const selectedTeamInfo = (() => {
+    if (!selectedTeam) return null;
+    const native = nativeTeams?.find((t) => t.id === selectedTeam);
+    if (native) return { members: native.members, totalCount: native.memberCount };
+    const custom = myTeams?.find((t) => t.id === selectedTeam);
+    if (custom) return { members: custom.members, totalCount: custom.members.length };
+    return null;
+  })();
 
   // ── Ask state ────────────────────────────────────────────────────
   const [askQuestion, setAskQuestion] = useState("");
@@ -91,6 +116,7 @@ export function RoundtableWorkspace() {
 
   const isCTADisabled =
     isDeliberating ||
+    selectedTeam === null ||
     (activeMode === "ask" && askQuestion.trim().length === 0) ||
     (activeMode === "poll" && pollQuestion.trim().length === 0) ||
     (activeMode === "review" && !reviewFileName);
@@ -138,7 +164,18 @@ export function RoundtableWorkspace() {
             )}
           </div>
 
-          <TeamSelector value={selectedTeam} onChange={setSelectedTeam} />
+          <TeamSelector
+            value={selectedTeam}
+            onChange={setSelectedTeam}
+            onManageTeams={() => setManageTeamsOpen(true)}
+          />
+
+          {selectedTeamInfo && (
+            <TeamMemberPreview
+              members={selectedTeamInfo.members}
+              totalCount={selectedTeamInfo.totalCount}
+            />
+          )}
 
           <Button
             size="lg"
@@ -150,6 +187,11 @@ export function RoundtableWorkspace() {
           </Button>
         </CardContent>
       </Card>
+
+      <TeamManagementDialog
+        open={manageTeamsOpen}
+        onOpenChange={setManageTeamsOpen}
+      />
     </section>
   );
 }

@@ -7,9 +7,20 @@ interface AskResultBodyProps {
 
 export function AskResultBody({ result }: AskResultBodyProps) {
   return (
-    <div>
+    <div className="space-y-8">
+      {/* Perspective Summary */}
+      <Card>
+        <CardContent>
+          <h2 className="mb-3 font-serif text-xl font-semibold">Perspective Summary</h2>
+          <p className="text-base leading-relaxed text-text-secondary">
+            {result.summary}
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* Individual Perspectives */}
       <h2 className="font-serif text-xl font-semibold">Panel Perspectives</h2>
-      <div className="mt-4 space-y-6">
+      <div className="space-y-6">
         {result.perspectives.map((p) => (
           <Card key={p.theologian.name}>
             <CardContent>

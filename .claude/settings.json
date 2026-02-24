@@ -1,0 +1,5 @@
+{
+  "env": {
+    "PATH": "$HOME/.bun/bin:$PATH"
+  }
+}

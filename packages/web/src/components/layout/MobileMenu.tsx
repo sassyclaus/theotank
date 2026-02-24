@@ -1,7 +1,8 @@
 import { useRef } from "react";
 import { NavLink } from "react-router";
-import { User } from "lucide-react";
+import { SignUpButton, SignInButton, UserButton, useAuth } from "@clerk/clerk-react";
 import { navLinks } from "@/data/navigation";
+import { Button } from "@/components/ui/button";
 
 interface MobileMenuProps {
   open: boolean;
@@ -10,6 +11,7 @@ interface MobileMenuProps {
 
 export function MobileMenu({ open, onClose }: MobileMenuProps) {
   const panelRef = useRef<HTMLDivElement>(null);
+  const { isSignedIn } = useAuth();
 
   return (
     <div
@@ -22,29 +24,53 @@ export function MobileMenu({ open, onClose }: MobileMenuProps) {
     >
       <div className="overflow-hidden">
         <nav className="flex flex-col gap-1 px-4 pt-2 pb-4">
-          {navLinks.map((link) => (
-            <NavLink
-              key={link.href}
-              to={link.href}
-              onClick={onClose}
-              className={({ isActive }) =>
-                `rounded-lg px-4 py-3 text-lg font-medium transition-colors ${
-                  isActive
-                    ? "bg-surface font-semibold text-text-primary"
-                    : "text-text-secondary hover:bg-surface hover:text-text-primary"
-                }`
-              }
-            >
-              {link.label}
-            </NavLink>
-          ))}
+          {isSignedIn && (
+            <>
+              {navLinks.map((link) => (
+                <NavLink
+                  key={link.href}
+                  to={link.href}
+                  onClick={onClose}
+                  className={({ isActive }) =>
+                    `rounded-lg px-4 py-3 text-lg font-medium transition-colors ${
+                      isActive
+                        ? "bg-surface font-semibold text-text-primary"
+                        : "text-text-secondary hover:bg-surface hover:text-text-primary"
+                    }`
+                  }
+                >
+                  {link.label}
+                </NavLink>
+              ))}
 
-          <div className="mt-2 border-t border-surface pt-3">
-            <button className="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-lg font-medium text-text-secondary hover:bg-surface hover:text-text-primary transition-colors">
-              <User className="h-5 w-5" />
-              Account
-            </button>
-          </div>
+              <div className="mt-2 border-t border-surface pt-3">
+                <div className="flex items-center gap-3 px-4 py-3">
+                  <UserButton afterSignOutUrl="/" />
+                  <span className="text-lg font-medium text-text-secondary">
+                    Account
+                  </span>
+                </div>
+              </div>
+            </>
+          )}
+
+          {!isSignedIn && (
+            <div className="flex flex-col gap-2 pt-2">
+              <SignUpButton mode="modal">
+                <Button className="w-full bg-gold py-3 text-base font-semibold text-white hover:bg-gold/90">
+                  Get Started
+                </Button>
+              </SignUpButton>
+              <SignInButton mode="modal">
+                <Button
+                  variant="outline"
+                  className="w-full border-teal py-3 text-base font-semibold text-teal hover:bg-teal-light"
+                >
+                  Sign In
+                </Button>
+              </SignInButton>
+            </div>
+          )}
         </nav>
       </div>
     </div>

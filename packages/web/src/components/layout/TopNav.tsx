@@ -1,5 +1,6 @@
 import { Link, NavLink } from "react-router";
-import { Menu, X, User } from "lucide-react";
+import { Menu, X } from "lucide-react";
+import { SignInButton, UserButton, useAuth } from "@clerk/clerk-react";
 import { navLinks } from "@/data/navigation";
 import { Button } from "@/components/ui/button";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -11,6 +12,7 @@ interface TopNavProps {
 
 export function TopNav({ mobileMenuOpen, onToggleMobileMenu }: TopNavProps) {
   const isMobile = useIsMobile();
+  const { isSignedIn } = useAuth();
 
   return (
     <header className="border-b border-surface bg-nav-bg">
@@ -19,7 +21,7 @@ export function TopNav({ mobileMenuOpen, onToggleMobileMenu }: TopNavProps) {
           TheoTank
         </Link>
 
-        {!isMobile && (
+        {!isMobile && isSignedIn && (
           <nav className="flex items-center gap-1">
             {navLinks.map((link) => (
               <NavLink
@@ -40,10 +42,15 @@ export function TopNav({ mobileMenuOpen, onToggleMobileMenu }: TopNavProps) {
         )}
 
         <div className="flex items-center gap-2">
-          {!isMobile && (
-            <Button variant="ghost" size="icon" aria-label="User menu">
-              <User className="h-5 w-5" />
-            </Button>
+          {!isMobile && isSignedIn && (
+            <UserButton afterSignOutUrl="/" />
+          )}
+          {!isMobile && !isSignedIn && (
+            <SignInButton mode="modal">
+              <Button variant="ghost" className="text-sm font-medium text-teal">
+                Sign In
+              </Button>
+            </SignInButton>
           )}
           {isMobile && (
             <Button

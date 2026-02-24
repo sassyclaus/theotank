@@ -52,6 +52,7 @@ export const TRADITION_COLORS: Record<Tradition, string> = {
 };
 
 export interface TheologianProfile {
+  id: string;
   slug: string;
   name: string;
   initials: string;
@@ -63,6 +64,7 @@ export interface TheologianProfile {
   tagline: string;
   bio: string;
   keyWorks: string[];
+  imageUrl: string | null;
   hasResearch: boolean;
   nativeTeams: string[];
 }
@@ -70,6 +72,7 @@ export interface TheologianProfile {
 export const allTheologians: TheologianProfile[] = [
   // ── Apostolic ──
   {
+    id: "",
     slug: "irenaeus-of-lyon",
     name: "Irenaeus of Lyon",
     initials: "IL",
@@ -81,10 +84,12 @@ export const allTheologians: TheologianProfile[] = [
     tagline: "Champion of orthodoxy against Gnosticism and architect of recapitulation theology.",
     bio: "Irenaeus served as Bishop of Lyon in the late second century. A student of Polycarp, who had been a disciple of the Apostle John, he represents one of the earliest links between the apostolic and patristic eras. His magnum opus, Against Heresies, systematically refuted Gnostic teachings and articulated a theology of creation, incarnation, and salvation that would shape Christian orthodoxy for centuries.",
     keyWorks: ["Against Heresies", "Demonstration of the Apostolic Preaching"],
+    imageUrl: null,
     hasResearch: false,
     nativeTeams: ["Early Church Fathers"],
   },
   {
+    id: "",
     slug: "tertullian",
     name: "Tertullian",
     initials: "TE",
@@ -96,11 +101,13 @@ export const allTheologians: TheologianProfile[] = [
     tagline: "Father of Latin Christianity who coined the language of Trinitarian theology.",
     bio: "Tertullian of Carthage was the first major Christian author to write in Latin, earning him the title 'Father of Latin Christianity.' He introduced key theological vocabulary including 'Trinity' (trinitas) and 'person' (persona) into Christian discourse. His fiery apologetic works defended Christianity against Roman persecution while his later embrace of Montanism complicated his legacy.",
     keyWorks: ["Apologeticum", "Against Praxeas", "On the Prescription of Heretics"],
+    imageUrl: null,
     hasResearch: false,
     nativeTeams: ["Early Church Fathers"],
   },
   // ── Patristic ──
   {
+    id: "",
     slug: "athanasius",
     name: "Athanasius of Alexandria",
     initials: "AT",
@@ -112,10 +119,12 @@ export const allTheologians: TheologianProfile[] = [
     tagline: "Defender of Nicene orthodoxy who stood 'contra mundum' for Christ's full divinity.",
     bio: "Athanasius served as Bishop of Alexandria for over four decades, during which he was exiled five times for his unwavering defense of the Nicene Creed against Arianism. His treatise On the Incarnation remains one of the most influential works in Christian theology, articulating why the Word became flesh.",
     keyWorks: ["On the Incarnation", "Against the Arians", "Life of Antony"],
+    imageUrl: null,
     hasResearch: false,
     nativeTeams: ["Nicene Fathers"],
   },
   {
+    id: "",
     slug: "augustine-of-hippo",
     name: "Augustine of Hippo",
     initials: "AH",
@@ -127,10 +136,12 @@ export const allTheologians: TheologianProfile[] = [
     tagline: "The most influential theologian in Western Christianity, shaping doctrines of grace, sin, and the church.",
     bio: "Augustine of Hippo's journey from Manichaeism through Neo-Platonism to Christianity, chronicled in his Confessions, produced one of the greatest minds in Christian history. His writings on original sin, predestination, and grace profoundly influenced both Catholic and Protestant theology. The City of God provided a Christian philosophy of history that shaped Western civilization.",
     keyWorks: ["Confessions", "The City of God", "On the Trinity", "On Christian Doctrine"],
+    imageUrl: null,
     hasResearch: true,
     nativeTeams: ["Church Fathers", "Doctors of the Church"],
   },
   {
+    id: "",
     slug: "john-chrysostom",
     name: "John Chrysostom",
     initials: "JC",
@@ -142,10 +153,12 @@ export const allTheologians: TheologianProfile[] = [
     tagline: "The 'Golden Mouth' whose homilies set the standard for Christian preaching.",
     bio: "John Chrysostom, Archbishop of Constantinople, earned his epithet 'Golden Mouth' for his extraordinary eloquence. His verse-by-verse homilies on Scripture remain among the finest examples of patristic exegesis. His commitment to social justice and criticism of imperial excess led to his exile and eventual death.",
     keyWorks: ["Homilies on Matthew", "Homilies on Romans", "On the Priesthood"],
+    imageUrl: null,
     hasResearch: false,
     nativeTeams: ["Church Fathers", "Cappadocian Circle"],
   },
   {
+    id: "",
     slug: "basil-the-great",
     name: "Basil the Great",
     initials: "BG",
@@ -157,11 +170,13 @@ export const allTheologians: TheologianProfile[] = [
     tagline: "Cappadocian Father who shaped Trinitarian theology and Christian monasticism.",
     bio: "Basil of Caesarea, one of the three Cappadocian Fathers, made lasting contributions to Trinitarian theology, particularly regarding the Holy Spirit. He established monastic rules that remain foundational for Eastern monasticism and was known for his charitable works, establishing one of the first hospital complexes in history.",
     keyWorks: ["On the Holy Spirit", "Longer Rules", "Hexaemeron"],
+    imageUrl: null,
     hasResearch: false,
     nativeTeams: ["Cappadocian Fathers"],
   },
   // ── Medieval ──
   {
+    id: "",
     slug: "anselm-of-canterbury",
     name: "Anselm of Canterbury",
     initials: "AC",
@@ -173,10 +188,12 @@ export const allTheologians: TheologianProfile[] = [
     tagline: "Father of Scholasticism who sought faith seeking understanding.",
     bio: "Anselm of Canterbury pioneered the scholastic method of theology, famously defining his enterprise as 'faith seeking understanding' (fides quaerens intellectum). His ontological argument for God's existence and satisfaction theory of atonement remain touchstones of philosophical theology and soteriology respectively.",
     keyWorks: ["Proslogion", "Cur Deus Homo", "Monologion"],
+    imageUrl: null,
     hasResearch: false,
     nativeTeams: ["Doctors of the Church"],
   },
   {
+    id: "",
     slug: "thomas-aquinas",
     name: "Thomas Aquinas",
     initials: "TA",
@@ -188,10 +205,12 @@ export const allTheologians: TheologianProfile[] = [
     tagline: "The Angelic Doctor whose synthesis of faith and reason defined Catholic theology.",
     bio: "Thomas Aquinas, a Dominican friar, produced the most comprehensive systematic theology of the medieval period. His Summa Theologiae synthesized Aristotelian philosophy with Christian doctrine, addressing virtually every theological question with rigorous logical precision. His influence on Catholic thought is unparalleled, and his Five Ways remain classic arguments for God's existence.",
     keyWorks: ["Summa Theologiae", "Summa Contra Gentiles", "Commentary on the Sentences"],
+    imageUrl: null,
     hasResearch: true,
     nativeTeams: ["Doctors of the Church", "Dominican Order"],
   },
   {
+    id: "",
     slug: "hildegard-of-bingen",
     name: "Hildegard of Bingen",
     initials: "HB",
@@ -203,11 +222,13 @@ export const allTheologians: TheologianProfile[] = [
     tagline: "Visionary mystic, polymath, and Doctor of the Church.",
     bio: "Hildegard of Bingen was a Benedictine abbess whose theological visions, musical compositions, scientific writings, and medical treatises made her one of the most remarkable figures of the medieval period. Her trilogy of visionary works — Scivias, Liber Vitae Meritorum, and Liber Divinorum Operum — present a cosmic theology of extraordinary imaginative power.",
     keyWorks: ["Scivias", "Liber Divinorum Operum", "Ordo Virtutum"],
+    imageUrl: null,
     hasResearch: false,
     nativeTeams: ["Doctors of the Church", "Benedictine Order"],
   },
   // ── Reformation ──
   {
+    id: "",
     slug: "martin-luther",
     name: "Martin Luther",
     initials: "ML",
@@ -219,10 +240,12 @@ export const allTheologians: TheologianProfile[] = [
     tagline: "Reformer whose 95 Theses ignited the Protestant Reformation.",
     bio: "Martin Luther, an Augustinian monk and professor of theology, launched the Protestant Reformation with his challenge to the sale of indulgences in 1517. His doctrines of justification by faith alone, Scripture alone, and the priesthood of all believers fundamentally reshaped Western Christianity. His translation of the Bible into German made Scripture accessible to ordinary people.",
     keyWorks: ["95 Theses", "The Bondage of the Will", "Large Catechism", "On the Freedom of a Christian"],
+    imageUrl: null,
     hasResearch: false,
     nativeTeams: ["Reformers"],
   },
   {
+    id: "",
     slug: "john-calvin",
     name: "John Calvin",
     initials: "JC",
@@ -234,10 +257,12 @@ export const allTheologians: TheologianProfile[] = [
     tagline: "Systematic theologian of the Reformation whose Institutes shaped Reformed Christianity.",
     bio: "John Calvin's Institutes of the Christian Religion became the most important systematic theology of the Reformation era. From his base in Geneva, Calvin developed a comprehensive theological vision emphasizing God's sovereignty, predestination, and the proper ordering of church and society. His commentaries on nearly every book of the Bible remain widely consulted.",
     keyWorks: ["Institutes of the Christian Religion", "Commentaries", "Ecclesiastical Ordinances"],
+    imageUrl: null,
     hasResearch: true,
     nativeTeams: ["Reformers"],
   },
   {
+    id: "",
     slug: "john-knox",
     name: "John Knox",
     initials: "JK",
@@ -249,11 +274,13 @@ export const allTheologians: TheologianProfile[] = [
     tagline: "Fiery founder of Scottish Presbyterianism.",
     bio: "John Knox brought the Reformation to Scotland, establishing Presbyterianism as the dominant form of Christianity in his homeland. Influenced by Calvin during his time in Geneva, Knox returned to Scotland with a passionate commitment to reformed worship and church governance. His confrontations with Mary, Queen of Scots, became legendary examples of prophetic courage.",
     keyWorks: ["The History of the Reformation in Scotland", "The First Blast of the Trumpet"],
+    imageUrl: null,
     hasResearch: false,
     nativeTeams: ["Reformers"],
   },
   // ── Post-Reformation ──
   {
+    id: "",
     slug: "john-owen",
     name: "John Owen",
     initials: "JO",
@@ -265,10 +292,12 @@ export const allTheologians: TheologianProfile[] = [
     tagline: "The prince of Puritan theologians and defender of Reformed orthodoxy.",
     bio: "John Owen served as vice-chancellor of Oxford and chaplain to Oliver Cromwell while producing some of the most rigorous theological works of the Puritan era. His treatises on the Holy Spirit, mortification of sin, and the atonement remain classics of Reformed theology. His combination of doctrinal precision and pastoral warmth set the standard for Puritan divinity.",
     keyWorks: ["The Death of Death in the Death of Christ", "Communion with the Triune God", "The Mortification of Sin"],
+    imageUrl: null,
     hasResearch: false,
     nativeTeams: ["Puritans"],
   },
   {
+    id: "",
     slug: "jonathan-edwards",
     name: "Jonathan Edwards",
     initials: "JE",
@@ -280,10 +309,12 @@ export const allTheologians: TheologianProfile[] = [
     tagline: "America's greatest theologian and philosopher of the Great Awakening.",
     bio: "Jonathan Edwards combined philosophical brilliance with revival preaching during the First Great Awakening. His works on religious affections, original sin, and the freedom of the will represent the pinnacle of American theological achievement. His vision of God's glory as the ultimate end of creation continues to inspire Reformed theology.",
     keyWorks: ["Religious Affections", "Freedom of the Will", "The End for Which God Created the World"],
+    imageUrl: null,
     hasResearch: false,
     nativeTeams: ["Great Awakening Preachers"],
   },
   {
+    id: "",
     slug: "john-wesley",
     name: "John Wesley",
     initials: "JW",
@@ -295,10 +326,12 @@ export const allTheologians: TheologianProfile[] = [
     tagline: "Founder of Methodism who preached holiness and social transformation.",
     bio: "John Wesley's 'heart strangely warmed' at Aldersgate launched a movement that would transform British and American Christianity. His emphasis on personal holiness, sanctification, and social concern produced the Methodist movement. Wesley's organizational genius — class meetings, circuit riders, and lay preachers — created a model for evangelical outreach.",
     keyWorks: ["Sermons on Several Occasions", "A Plain Account of Christian Perfection", "Explanatory Notes on the New Testament"],
+    imageUrl: null,
     hasResearch: false,
     nativeTeams: ["Methodist Founders"],
   },
   {
+    id: "",
     slug: "charles-spurgeon",
     name: "Charles Spurgeon",
     initials: "CS",
@@ -310,11 +343,13 @@ export const allTheologians: TheologianProfile[] = [
     tagline: "The 'Prince of Preachers' whose sermons reached millions.",
     bio: "Charles Haddon Spurgeon pastored the Metropolitan Tabernacle in London, preaching to thousands weekly and publishing sermons that were read worldwide. His Calvinist Baptist convictions, combined with extraordinary oratorical gifts, made him the most widely read preacher in Victorian England. His devotional writings and commentary on the Psalms remain beloved.",
     keyWorks: ["The Treasury of David", "Morning and Evening", "Lectures to My Students"],
+    imageUrl: null,
     hasResearch: false,
     nativeTeams: ["Victorian Preachers"],
   },
   // ── Modern ──
   {
+    id: "",
     slug: "karl-barth",
     name: "Karl Barth",
     initials: "KB",
@@ -326,10 +361,12 @@ export const allTheologians: TheologianProfile[] = [
     tagline: "The most influential Protestant theologian of the twentieth century.",
     bio: "Karl Barth's Epistle to the Romans 'fell like a bomb on the playground of the theologians,' launching the neo-orthodox movement. His massive Church Dogmatics represents the most ambitious systematic theology since Aquinas. Barth's theology of the Word of God, his Christocentric method, and his resistance to Nazi ideology through the Barmen Declaration left an indelible mark on modern theology.",
     keyWorks: ["Church Dogmatics", "The Epistle to the Romans", "Evangelical Theology"],
+    imageUrl: null,
     hasResearch: false,
     nativeTeams: ["Neo-Orthodox Theologians"],
   },
   {
+    id: "",
     slug: "nt-wright",
     name: "N.T. Wright",
     initials: "NW",
@@ -341,6 +378,7 @@ export const allTheologians: TheologianProfile[] = [
     tagline: "Leading New Testament scholar reshaping evangelical understanding of Paul and resurrection.",
     bio: "N.T. Wright, former Bishop of Durham, is one of the most prolific and influential New Testament scholars of the contemporary era. His 'New Perspective on Paul' and comprehensive work on Jesus and the resurrection have sparked widespread scholarly and popular debate. His ability to communicate complex scholarship to general audiences has made him one of the most widely read theologians alive.",
     keyWorks: ["The Resurrection of the Son of God", "Paul and the Faithfulness of God", "Simply Christian"],
+    imageUrl: null,
     hasResearch: false,
     nativeTeams: ["Contemporary Scholars"],
   },

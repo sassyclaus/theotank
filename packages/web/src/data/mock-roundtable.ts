@@ -1,13 +1,6 @@
-import { allTheologians } from "./mock-theologians";
-
 // ── Types ────────────────────────────────────────────────────────────
 
 export type RoundtableMode = "ask" | "poll" | "review";
-
-export interface NativeTeam {
-  id: string;
-  label: string;
-}
 
 export interface RecentLibraryItem {
   id: string;
@@ -32,15 +25,6 @@ export interface ModeConfig {
 }
 
 // ── Data ─────────────────────────────────────────────────────────────
-
-export const nativeTeams: NativeTeam[] = [
-  { id: "all", label: "All Theologians" },
-  ...Array.from(
-    new Set(allTheologians.flatMap((t) => t.nativeTeams)),
-  )
-    .sort()
-    .map((team) => ({ id: team.toLowerCase().replace(/\s+/g, "-"), label: team })),
-];
 
 export const modeConfig: Record<RoundtableMode, ModeConfig> = {
   ask: {

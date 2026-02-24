@@ -1,0 +1,1 @@
+ALTER TABLE "theologians" ADD COLUMN "image_key" text;

@@ -1,7 +1,6 @@
 import { Check, AlertTriangle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { TheologianHeader } from "./AskResultBody";
-import type { ReviewResult } from "@/data/mock-results";
+import type { ReviewResult, ResultTheologian } from "@/data/mock-results";
 
 interface ReviewResultBodyProps {
   result: ReviewResult;
@@ -26,7 +25,10 @@ export function ReviewResultBody({ result }: ReviewResultBodyProps) {
         {result.reactions.map((reaction) => (
           <Card key={reaction.theologian.name}>
             <CardContent>
-              <TheologianHeader theologian={reaction.theologian} />
+              <ReviewTheologianHeader
+                theologian={reaction.theologian}
+                grade={reaction.grade}
+              />
               <p className="mt-4 text-base leading-relaxed text-text-primary">
                 {reaction.assessment}
               </p>
@@ -60,6 +62,37 @@ export function ReviewResultBody({ result }: ReviewResultBodyProps) {
           </Card>
         ))}
       </div>
+    </div>
+  );
+}
+
+function ReviewTheologianHeader({
+  theologian,
+  grade,
+}: {
+  theologian: ResultTheologian;
+  grade: string;
+}) {
+  return (
+    <div className="flex items-center gap-3">
+      <div
+        className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white"
+        style={{ backgroundColor: theologian.color }}
+      >
+        {theologian.initials}
+      </div>
+      <div className="min-w-0 flex-1">
+        <h3 className="font-serif text-lg font-semibold">{theologian.name}</h3>
+        <div className="flex items-center gap-2 text-sm text-text-secondary">
+          <span>{theologian.dates}</span>
+          <span className="rounded-full bg-surface px-2 py-0.5 text-xs font-medium">
+            {theologian.tradition}
+          </span>
+        </div>
+      </div>
+      <span className="shrink-0 rounded-md border border-teal/30 px-3 py-1 font-serif text-xl font-bold text-teal">
+        {grade}
+      </span>
     </div>
   );
 }

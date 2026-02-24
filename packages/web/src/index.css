@@ -18,6 +18,19 @@
   --color-sage: #5A7A62;
   --color-terracotta: #C4573A;
 
+  --color-admin-sidebar: #1E1E24;
+  --color-admin-sidebar-hover: #2A2A32;
+  --color-admin-sidebar-active: #33333D;
+  --color-admin-sidebar-text: #A0A0A8;
+  --color-admin-sidebar-text-active: #FFFFFF;
+  --color-admin-content-bg: #FFFFFF;
+  --color-admin-accent: #3B7BF4;
+  --color-admin-accent-light: #EBF1FE;
+  --color-admin-border: #E5E7EB;
+  --color-admin-success: #10B981;
+  --color-admin-warning: #F59E0B;
+  --color-admin-danger: #EF4444;
+
   --animate-marquee-left: marquee-left 30s linear infinite;
   --animate-marquee-right: marquee-right 30s linear infinite;
   --animate-fade-in: fade-in 200ms ease-out;
@@ -49,6 +62,15 @@ body {
 
 h1, h2, h3, h4, h5, h6 {
   font-family: var(--font-serif);
+}
+
+.admin-shell h1,
+.admin-shell h2,
+.admin-shell h3,
+.admin-shell h4,
+.admin-shell h5,
+.admin-shell h6 {
+  font-family: var(--font-sans);
 }
 
 /* Range slider thumb styles */

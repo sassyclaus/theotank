@@ -26,6 +26,7 @@ export interface AskPerspective {
 
 export interface AskResult extends ResultBase {
   tool: "ask";
+  summary: string;
   perspectives: AskPerspective[];
 }
 
@@ -42,17 +43,26 @@ export interface CenturyTrendEntry {
   options: { label: string; percentage: number }[];
 }
 
+export interface PollTheologianSelection {
+  theologian: ResultTheologian;
+  selection: string;
+  justification: string;
+}
+
 export interface PollResult extends ResultBase {
   tool: "poll";
+  summary: string;
   totalPolled: number;
   options: PollOption[];
   centuryTrend: CenturyTrendEntry[];
+  theologianSelections: PollTheologianSelection[];
 }
 
 // ── Review ──────────────────────────────────────────────────────────
 
 export interface ReviewReaction {
   theologian: ResultTheologian;
+  grade: string;
   assessment: string;
   strengths: string[];
   weaknesses: string[];
@@ -129,6 +139,8 @@ const results: Record<string, FullResult> = {
     title: "How did the early church understand justification?",
     team: "Church Fathers",
     date: "Feb 20, 2026",
+    summary:
+      "The panel identified three distinct strands of justification theology in the ante-Nicene period. Patristic and Medieval voices emphasized transformative grace — justification as an actual making-righteous through infused grace and the work of the Holy Spirit. Reformed and Lutheran voices sharply distinguished justification from sanctification, insisting on forensic declaration and imputed righteousness as the Reformation's essential correction. Barth offered a christological synthesis, locating justification as an objective reality accomplished in Christ's death and resurrection rather than merely a subjective experience. The deepest fault line runs between those who see justification as God making the sinner righteous and those who see it as God declaring the sinner righteous.",
     perspectives: [
       {
         theologian: augustine,
@@ -164,6 +176,8 @@ const results: Record<string, FullResult> = {
     title: "Is penal substitutionary atonement the best framework for understanding the cross?",
     team: "All Theologians",
     date: "Feb 18, 2026",
+    summary:
+      "The panel was sharply divided. Reformed and Lutheran voices strongly affirmed penal substitutionary atonement as central and non-negotiable — the satisfaction of divine justice through the substitutionary bearing of wrath. Patristic and Medieval voices preferred a multi-model approach: the cross as satisfaction, sacrifice, merit, redemption, and victory over the devil, with love rather than penalty as the deepest category. Barth offered a mediating position, affirming substitution as personal rather than merely penal, grounded in the doctrine of election. No consensus emerged on whether PSA is 'the best' framework, but all agreed the cross involves substitution in some form.",
     perspectives: [
       {
         theologian: augustine,
@@ -199,6 +213,8 @@ const results: Record<string, FullResult> = {
     title: "Can a coherent doctrine of the Trinity be articulated without the filioque clause?",
     team: "Church Fathers",
     date: "Feb 14, 2026",
+    summary:
+      "Eastern panelists argued persuasively that the monarchy of the Father provides sufficient trinitarian structure without the filioque, while Western voices maintained that the clause guards against subordinationism and is logically necessary to distinguish Son from Spirit. Augustine and Aquinas presented the strongest defenses of the filioque on metaphysical grounds — that without it, no real relation distinguishes the second and third persons. Calvin and Luther affirmed the filioque but with less speculative investment, grounding it primarily in Scripture. Barth proposed a creative revision — 'the Spirit proceeds from the Father of the Son' — as a possible ecumenical bridge. The panel agreed that the underlying concern (the Spirit's relation to Christ) is non-negotiable, even if the formulation remains debated.",
     perspectives: [
       {
         theologian: augustine,
@@ -234,6 +250,8 @@ const results: Record<string, FullResult> = {
     title: "Should women be ordained to pastoral ministry?",
     team: "All Theologians",
     date: "Feb 15, 2026",
+    summary:
+      "Opinion is closely divided, with a slim plurality in favor. The strongest support comes from modern theologians, while patristic and medieval voices overwhelmingly opposed. The century trend reveals a dramatic historical shift — opposition dominated for over a millennium before reversing sharply in the modern era. The 'Nuanced' camp, though smallest, included influential voices who distinguished between ordination in principle and particular ecclesial contexts.",
     totalPolled: 48,
     options: [
       { label: "In favor", percentage: 44, count: 21 },
@@ -282,6 +300,38 @@ const results: Record<string, FullResult> = {
         ],
       },
     ],
+    theologianSelections: [
+      {
+        theologian: augustine,
+        selection: "Opposed",
+        justification:
+          "The order of creation and the apostolic tradition both indicate that the pastoral office is reserved to men. The bishop stands in the place of Christ the Bridegroom, and this symbolic ordering is not arbitrary but rooted in the divine economy. Women serve the church in indispensable ways, but the presbyteral office is not among them.",
+      },
+      {
+        theologian: aquinas,
+        selection: "Opposed",
+        justification:
+          "The sacrament of Holy Orders requires the recipient to signify Christ in a manner that includes natural resemblance. Since Christ chose male apostles — not from cultural accommodation but by deliberate will — the matter of the sacrament cannot be altered without changing its meaning. This is not a judgment on women's dignity but on sacramental signification.",
+      },
+      {
+        theologian: calvin,
+        selection: "Nuanced",
+        justification:
+          "Scripture is clear that the apostolic church restricted the teaching office to men, and we must take Paul's instructions seriously. Yet I distinguish between the permanent moral law and particular ecclesiastical arrangements. The key question is whether the restriction is grounded in creation order or in apostolic prudence for a particular cultural moment. I lean toward the former but acknowledge the exegetical complexity.",
+      },
+      {
+        theologian: luther,
+        selection: "Opposed",
+        justification:
+          "The Office of the Ministry is established by Christ and entrusted to those He called. The pastoral office carries the authority of Word and Sacrament, and Scripture consistently places this responsibility on men. This is not about capability — many women far exceed men in faith and understanding — but about the ordering Christ Himself established.",
+      },
+      {
+        theologian: barth,
+        selection: "In favor",
+        justification:
+          "The freedom of God cannot be bound by human traditions masquerading as divine orders. If the Spirit gifts and calls a woman to pastoral ministry, the church has no right to refuse what God has ordained. The subordination of women in church office reflects cultural patriarchy, not the order of redemption. In Christ there is neither male nor female — and this must have ecclesiological consequences.",
+      },
+    ],
   },
 
   "ml-6": {
@@ -290,6 +340,8 @@ const results: Record<string, FullResult> = {
     title: "Is infant baptism scripturally warranted?",
     team: "Reformers",
     date: "Feb 10, 2026",
+    summary:
+      "A clear majority affirmed infant baptism as scripturally warranted, though the margin has narrowed considerably from the medieval period to the modern era. Patristic and medieval consensus was near-universal in support. The Reformation introduced the sharpest division, with Anabaptist and Baptist voices insisting on believer's baptism alone. The modern period shows continued erosion of the paedobaptist majority, with growing evangelical and free-church influence pushing the 'No' camp to near-parity.",
     totalPolled: 32,
     options: [
       { label: "Yes", percentage: 62, count: 20 },
@@ -338,6 +390,38 @@ const results: Record<string, FullResult> = {
         ],
       },
     ],
+    theologianSelections: [
+      {
+        theologian: augustine,
+        selection: "Yes",
+        justification:
+          "The practice of baptizing infants has been received from the apostles. Infants, though incapable of personal faith, are born under the guilt of original sin and require the washing of regeneration. The faith of the church stands in for the infant, just as it was the faith of those who brought the paralytic that moved Christ to heal. To deny baptism to infants is to deny them the remedy for the wound they bear from Adam.",
+      },
+      {
+        theologian: aquinas,
+        selection: "Yes",
+        justification:
+          "Baptism is the sacrament of faith, and infants are baptized in the faith of the church. Just as children inherit original sin without personal consent, so they may receive the remedy of grace through the sacramental action of the community. The practice is attested from antiquity and rests on sound theological principle: the efficacy of the sacrament depends on Christ's institution, not the recipient's subjective disposition.",
+      },
+      {
+        theologian: calvin,
+        selection: "Yes",
+        justification:
+          "Infant baptism corresponds to circumcision under the old covenant. God's promise extends to believers and their children, and baptism is the sign and seal of that promise. To exclude the children of believers from the covenant sign is to make the new covenant narrower than the old — which contradicts the entire trajectory of redemptive history. The Anabaptist position, however sincere, misunderstands the nature of the covenant.",
+      },
+      {
+        theologian: luther,
+        selection: "Yes",
+        justification:
+          "I baptize infants because Christ commands us to baptize all nations and forbids none. God can and does work faith in infants through the Word joined to the water. The Anabaptists err grievously in making baptism depend on the individual's conscious decision — as if God's grace were conditional on our cooperation. Infant baptism is a powerful testimony that salvation is God's work, not ours.",
+      },
+      {
+        theologian: barth,
+        selection: "No",
+        justification:
+          "Baptism is properly the free response of a human being to God's gracious action in Jesus Christ. To baptize an unconscious infant reduces the sacrament to a mechanical rite and obscures the character of faith as a free, personal decision. The church's long practice of infant baptism has contributed to the disastrous confusion of church and civil society. Baptism should be restored to its New Testament form: the public confession of one who has heard and responded to the gospel.",
+      },
+    ],
   },
 
   "ml-7": {
@@ -352,6 +436,7 @@ const results: Record<string, FullResult> = {
     reactions: [
       {
         theologian: augustine,
+        grade: "B+",
         assessment:
           "Lewis's appeal to a universal moral law resonates with the lex aeterna written on the human heart. His argument from conscience echoes what I have called the interior teacher. However, he underestimates the noetic effects of sin — fallen humanity does not simply 'know' the moral law but suppresses it. The argument needs a stronger doctrine of illumination.",
         strengths: [
@@ -366,6 +451,7 @@ const results: Record<string, FullResult> = {
       },
       {
         theologian: aquinas,
+        grade: "A-",
         assessment:
           "The chapter presents a recognizable form of natural-law reasoning, and I commend Lewis for making it accessible. His movement from moral experience to a transcendent Lawgiver follows a valid line of argumentation. However, the treatment lacks the precision of distinguishing between synderesis, natural law, and positive law. The argument would benefit from greater metaphysical rigor.",
         strengths: [
@@ -381,6 +467,7 @@ const results: Record<string, FullResult> = {
       },
       {
         theologian: calvin,
+        grade: "B",
         assessment:
           "Lewis writes with admirable clarity and persuasive force. Yet his reliance on natural moral knowledge, while useful for apologetics, risks implying that unregenerate reason can arrive at saving truth. The sensus divinitatis gives humans an awareness of God, but this awareness condemns rather than saves apart from the Word and Spirit. Lewis's argument is a useful prolegomenon but not a substitute for revealed theology.",
         strengths: [
@@ -395,6 +482,7 @@ const results: Record<string, FullResult> = {
       },
       {
         theologian: luther,
+        grade: "B-",
         assessment:
           "Lewis is a gifted writer, and his argument has brought many to consider Christianity. But philosophy is the devil's whore when it pretends to establish what only faith can grasp. The law written on the heart serves to accuse, not to save. Lewis's moral argument may prepare the ground, but it must not be mistaken for the gospel itself. Where is the cross in this chapter? Where is the proclamation of Christ crucified?",
         strengths: [
@@ -409,6 +497,7 @@ const results: Record<string, FullResult> = {
       },
       {
         theologian: barth,
+        grade: "C+",
         assessment:
           "Lewis's project of establishing a moral foundation for Christianity through general experience is methodologically problematic. Theology does not begin from below — from human moral consciousness — but from above, from God's self-revelation in Jesus Christ. The moral argument, however skillfully presented, belongs to the tradition of natural theology that I have critiqued at length. Christianity is not the best explanation for morality; it is the announcement of God's gracious action in history.",
         strengths: [
