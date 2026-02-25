@@ -9,7 +9,7 @@ import { ProgressTimeline } from "@/components/roundtable/ProgressTimeline";
 import { Card, CardContent } from "@/components/ui/card";
 import { getResultById } from "@/data/mock-results";
 import type { AskResult, PollResult, PollOption, CenturyTrendEntry, FullResult } from "@/data/mock-results";
-import type { AskContentResponse, PollContentResponse } from "@/data/result-types";
+import type { AskContentResponse, PollContentResponse, ReviewContentResponse } from "@/data/result-types";
 
 export default function Result() {
   const { id } = useParams<{ id: string }>();
@@ -116,6 +116,34 @@ export default function Result() {
         );
       }
 
+      if (apiResult.toolType === "review") {
+        const reviewContent = content as ReviewContentResponse;
+        const mapped: FullResult = {
+          id: apiResult.id,
+          tool: "review",
+          title: apiResult.title,
+          team: apiResult.teamName ?? "Panel",
+          date: dateStr,
+          grade: reviewContent.overallGrade,
+          summary: reviewContent.summary,
+          reactions: reviewContent.grades.map((g) => ({
+            theologian: g.theologian,
+            grade: g.grade,
+            assessment: g.reaction,
+            strengths: g.strengths,
+            weaknesses: g.weaknesses,
+          })),
+        };
+
+        return (
+          <div className="mx-auto max-w-4xl px-4 py-12 lg:px-8">
+            <ReportHeader result={mapped} />
+            <ReviewResultBody result={mapped} />
+          </div>
+        );
+      }
+
+      // Default: ask
       const askContent = content as AskContentResponse;
       const mapped: AskResult = {
         id: apiResult.id,

@@ -66,7 +66,7 @@ export function RoundtableWorkspace() {
   const [pollOptions, setPollOptions] = useState(["", ""]);
 
   // ── Review state ────────────────────────────────────────────────
-  const [reviewFileName, setReviewFileName] = useState<string | null>(null);
+  const [selectedReviewFileId, setSelectedReviewFileId] = useState<string | null>(null);
   const [reviewFocusPrompt, setReviewFocusPrompt] = useState("");
 
   // ── Ask nudge debounce ──────────────────────────────────────────
@@ -161,8 +161,25 @@ export function RoundtableWorkspace() {
         const message = err instanceof Error ? err.message : "Submission failed";
         setWsPhase({ phase: "error", message });
       }
+    } else if (activeMode === "review") {
+      if (!selectedReviewFileId) return;
+
+      setWsPhase({ phase: "submitting" });
+
+      try {
+        const result = await createResult.mutateAsync({
+          toolType: "review",
+          teamId: selectedTeam,
+          reviewFileId: selectedReviewFileId,
+          focusPrompt: reviewFocusPrompt.trim() || undefined,
+        });
+        setWsPhase({ phase: "deliberating", resultId: result.id });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Submission failed";
+        setWsPhase({ phase: "error", message });
+      }
     }
-  }, [selectedTeam, activeMode, askQuestion, pollQuestion, pollOptions, createResult]);
+  }, [selectedTeam, activeMode, askQuestion, pollQuestion, pollOptions, selectedReviewFileId, reviewFocusPrompt, createResult]);
 
   const handleReset = useCallback(() => {
     setAskQuestion("");
@@ -188,7 +205,7 @@ export function RoundtableWorkspace() {
     (activeMode === "poll" &&
       (pollQuestion.trim().length === 0 ||
         pollOptions.filter((o) => o.trim().length > 0).length < 2)) ||
-    (activeMode === "review" && !reviewFileName);
+    (activeMode === "review" && !selectedReviewFileId);
 
   return (
     <section className="mx-auto max-w-3xl px-4 pb-12">
@@ -237,9 +254,9 @@ export function RoundtableWorkspace() {
             )}
             {activeMode === "review" && (
               <ReviewPanel
-                fileName={reviewFileName}
+                selectedFileId={selectedReviewFileId}
                 focusPrompt={reviewFocusPrompt}
-                onFileChange={setReviewFileName}
+                onFileIdChange={setSelectedReviewFileId}
                 onFocusPromptChange={setReviewFocusPrompt}
               />
             )}

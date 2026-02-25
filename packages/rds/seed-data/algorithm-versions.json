@@ -23,5 +23,17 @@
       }
     },
     "isActive": true
+  },
+  {
+    "toolType": "review",
+    "version": "1.0.0",
+    "description": "Initial Review algorithm — per-theologian grading with synthesis summary",
+    "config": {
+      "defaultModels": {
+        "review": { "model": "gpt-5-mini-2025-08-07", "provider": "openai" },
+        "synthesis": { "model": "gpt-5-mini-2025-08-07", "provider": "openai" }
+      }
+    },
+    "isActive": true
   }
 ]

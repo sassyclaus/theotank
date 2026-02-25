@@ -50,6 +50,13 @@
       "when": 1771950448100,
       "tag": "0006_chubby_mathemanic",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1772001182493,
+      "tag": "0007_new_blue_marvel",
+      "breakpoints": true
     }
   ]
 }

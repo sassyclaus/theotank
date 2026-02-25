@@ -15,6 +15,7 @@ import {
 import { jobs } from "./jobs";
 import { theologians } from "./theologians";
 import { teamSnapshots } from "./teams";
+import { reviewFiles } from "./review-files";
 
 // ── Enums ──────────────────────────────────────────────────────────────
 
@@ -99,6 +100,9 @@ export const results = pgTable(
     theologianId: uuid("theologian_id").references(() => theologians.id, {
       onDelete: "restrict",
     }),
+    reviewFileId: uuid("review_file_id").references(() => reviewFiles.id, {
+      onDelete: "set null",
+    }),
     status: resultStatusEnum("status").default("pending").notNull(),
     jobId: uuid("job_id").references(() => jobs.id, { onDelete: "set null" }),
     algorithmVersionId: uuid("algorithm_version_id").references(
@@ -141,6 +145,7 @@ export const results = pgTable(
     index("results_retried_from_id_idx").on(table.retriedFromId),
     index("results_algorithm_version_id_idx").on(table.algorithmVersionId),
     index("results_result_type_id_idx").on(table.resultTypeId),
+    index("results_review_file_id_idx").on(table.reviewFileId),
   ]
 );
 

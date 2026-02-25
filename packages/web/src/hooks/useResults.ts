@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   createResult,
+  retryResult,
   listResults,
   getResult,
   getResultProgress,
@@ -20,6 +21,16 @@ export function useCreateResult() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (payload: CreateResultPayload) => createResult(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: resultKeys.list() });
+    },
+  });
+}
+
+export function useRetryResult() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => retryResult(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: resultKeys.list() });
     },

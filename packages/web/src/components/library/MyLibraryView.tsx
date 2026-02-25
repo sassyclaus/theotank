@@ -1,6 +1,7 @@
-import { useMemo } from "react";
-import { useResults } from "@/hooks/useResults";
-import { myLibraryItems, teamFilters } from "@/data/mock-library";
+import { useMemo, useCallback } from "react";
+import { useNavigate } from "react-router";
+import { useResults, useRetryResult } from "@/hooks/useResults";
+import { teamFilters } from "@/data/mock-library";
 import type { MyLibraryItem, LibraryToolType, LibraryItemStatus, LibraryPreview } from "@/data/mock-library";
 import type { ResultSummary } from "@/data/result-types";
 import { LibrarySearchBar } from "./LibrarySearchBar";
@@ -26,7 +27,7 @@ function mapPreview(r: ResultSummary): LibraryPreview {
     const pd = r.previewData as Record<string, unknown>;
     if (pd.type === "ask") return { type: "ask", conclusion: (pd.conclusion as string) ?? "" };
     if (pd.type === "poll") return { type: "poll", bars: (pd.bars as Array<{ label: string; percentage: number }>) ?? [] };
-    if (pd.type === "review") return { type: "review", grade: (pd.grade as string) ?? "" };
+    if (pd.type === "review") return { type: "review", grade: (pd.overallGrade as string) ?? (pd.grade as string) ?? "" };
     if (pd.type === "research") return { type: "research", citedSourcesCount: (pd.citedSourcesCount as number) ?? 0 };
   }
   return { type: r.toolType as "ask", conclusion: r.previewExcerpt ?? "" };
@@ -56,15 +57,24 @@ export function MyLibraryView({
   selectedTeam,
   onTeamChange,
 }: MyLibraryViewProps) {
+  const navigate = useNavigate();
   const { data: apiResults, isLoading } = useResults();
+  const retryMutation = useRetryResult();
 
-  // Merge API results with mock fallback items
+  const handleRetry = useCallback(
+    async (id: string) => {
+      try {
+        const newResult = await retryMutation.mutateAsync(id);
+        navigate(`/library/${newResult.id}`);
+      } catch {
+        // Error is surfaced by React Query
+      }
+    },
+    [retryMutation, navigate],
+  );
+
   const items: MyLibraryItem[] = useMemo(() => {
-    const apiItems = apiResults ? apiResults.map(mapToLibraryItem) : [];
-    // Show API results first, then mock items that don't conflict
-    const apiIds = new Set(apiItems.map((i) => i.id));
-    const mockFallback = myLibraryItems.filter((i) => !apiIds.has(i.id));
-    return [...apiItems, ...mockFallback];
+    return apiResults ? apiResults.map(mapToLibraryItem) : [];
   }, [apiResults]);
 
   const filtered = useMemo(() => {
@@ -115,7 +125,7 @@ export function MyLibraryView({
           ) : (
             <div className="space-y-3">
               {filtered.map((item) => (
-                <LibraryResultCard key={item.id} item={item} />
+                <LibraryResultCard key={item.id} item={item} onRetry={handleRetry} />
               ))}
             </div>
           )}

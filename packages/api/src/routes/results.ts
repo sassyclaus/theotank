@@ -9,6 +9,7 @@ import {
   teamMemberships,
   teamSnapshots,
   theologians,
+  reviewFiles,
 } from "@theotank/rds/schema";
 import { eq, and, desc, asc, isNull, sql } from "drizzle-orm";
 import { getObject } from "../lib/s3";
@@ -21,6 +22,7 @@ app.post("/", async (c) => {
   const body = await c.req.json<
     | { toolType: "ask"; teamId: string; question: string }
     | { toolType: "poll"; teamId: string; question: string; options: string[] }
+    | { toolType: "review"; teamId: string; reviewFileId: string; focusPrompt?: string }
   >();
 
   // Validate poll-specific payload
@@ -28,6 +30,30 @@ app.post("/", async (c) => {
     const { options } = body;
     if (!Array.isArray(options) || options.length < 2) {
       return c.json({ error: "Poll requires at least 2 options" }, 400);
+    }
+  }
+
+  // Validate review-specific payload
+  if (body.toolType === "review") {
+    if (!body.reviewFileId) {
+      return c.json({ error: "reviewFileId is required for review" }, 400);
+    }
+    const db = getDb();
+    const [file] = await db
+      .select()
+      .from(reviewFiles)
+      .where(
+        and(
+          eq(reviewFiles.id, body.reviewFileId),
+          eq(reviewFiles.userId, userId),
+          eq(reviewFiles.status, "ready")
+        )
+      );
+    if (!file) {
+      return c.json(
+        { error: "Review file not found or not ready" },
+        400
+      );
     }
   }
 
@@ -90,11 +116,29 @@ app.post("/", async (c) => {
         )
       );
 
-    // Build input payload based on tool type
-    const inputPayload =
-      body.toolType === "poll"
-        ? { question: body.question, options: body.options }
-        : { question: body.question };
+    // Build input payload and title based on tool type
+    let inputPayload: Record<string, unknown>;
+    let title: string;
+
+    if (body.toolType === "review") {
+      inputPayload = {
+        reviewFileId: body.reviewFileId,
+        focusPrompt: body.focusPrompt ?? null,
+      };
+      // Use the review file label as the result title
+      const db2 = getDb();
+      const [file] = await db2
+        .select({ label: reviewFiles.label })
+        .from(reviewFiles)
+        .where(eq(reviewFiles.id, body.reviewFileId));
+      title = `Review: ${file?.label ?? "Untitled"}`;
+    } else if (body.toolType === "poll") {
+      inputPayload = { question: body.question, options: body.options };
+      title = body.question;
+    } else {
+      inputPayload = { question: body.question };
+      title = body.question;
+    }
 
     // Insert result row
     const [resultRow] = await tx
@@ -102,9 +146,10 @@ app.post("/", async (c) => {
       .values({
         userId,
         toolType: body.toolType,
-        title: body.question,
+        title,
         inputPayload,
         teamSnapshotId: snapshot.id,
+        reviewFileId: body.toolType === "review" ? body.reviewFileId : undefined,
         resultTypeId: resultType.id,
         status: "pending",
       })
@@ -195,6 +240,75 @@ app.get("/:id", async (c) => {
   }
 
   return c.json(row);
+});
+
+// POST /api/results/:id/retry — retry a failed result
+app.post("/:id/retry", async (c) => {
+  const userId = c.get("userId" as never) as string;
+  const resultId = c.req.param("id");
+  const db = getDb();
+
+  // Load original result
+  const [original] = await db
+    .select()
+    .from(results)
+    .where(and(eq(results.id, resultId), eq(results.userId, userId)));
+
+  if (!original) {
+    return c.json({ error: "Result not found" }, 404);
+  }
+  if (original.status !== "failed") {
+    return c.json({ error: "Only failed results can be retried" }, 400);
+  }
+
+  const newResult = await db.transaction(async (tx) => {
+    // Hide the original result
+    await tx
+      .update(results)
+      .set({ hiddenAt: new Date(), updatedAt: new Date() })
+      .where(eq(results.id, resultId));
+
+    // Insert new result row, copying from original
+    const [resultRow] = await tx
+      .insert(results)
+      .values({
+        userId,
+        toolType: original.toolType,
+        title: original.title,
+        inputPayload: original.inputPayload,
+        teamSnapshotId: original.teamSnapshotId,
+        reviewFileId: original.reviewFileId,
+        resultTypeId: original.resultTypeId,
+        retriedFromId: original.id,
+        status: "pending",
+      })
+      .returning();
+
+    // Insert job row
+    const [jobRow] = await tx
+      .insert(jobs)
+      .values({
+        type: original.toolType,
+        payload: { resultId: resultRow.id },
+      })
+      .returning();
+
+    // Update result with jobId
+    await tx
+      .update(results)
+      .set({ jobId: jobRow.id })
+      .where(eq(results.id, resultRow.id));
+
+    return {
+      id: resultRow.id,
+      status: resultRow.status,
+      toolType: resultRow.toolType,
+      title: resultRow.title,
+      createdAt: resultRow.createdAt,
+    };
+  });
+
+  return c.json(newResult, 201);
 });
 
 // GET /api/results/:id/progress — progress logs

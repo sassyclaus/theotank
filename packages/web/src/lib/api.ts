@@ -13,6 +13,7 @@ import type {
   ProgressLogEntry,
   AskContentResponse,
   PollContentResponse,
+  ReviewContentResponse,
 } from "@/data/result-types";
 import type {
   AdminNativeTeam,
@@ -85,8 +86,46 @@ export async function getResultProgress(id: string): Promise<ProgressLogEntry[]>
   return apiClient.get<ProgressLogEntry[]>(`/api/results/${id}/progress`);
 }
 
-export async function getResultContent(id: string): Promise<AskContentResponse | PollContentResponse> {
-  return apiClient.get<AskContentResponse | PollContentResponse>(`/api/results/${id}/content`);
+export async function getResultContent(id: string): Promise<AskContentResponse | PollContentResponse | ReviewContentResponse> {
+  return apiClient.get<AskContentResponse | PollContentResponse | ReviewContentResponse>(`/api/results/${id}/content`);
+}
+
+export async function retryResult(
+  id: string,
+): Promise<{ id: string; status: string; toolType: string; title: string; createdAt: string }> {
+  return apiClient.post(`/api/results/${id}/retry`);
+}
+
+// ── Review Files ────────────────────────────────────────────────────
+
+import type {
+  ReviewFile,
+  ReviewFileUploadResponse,
+} from "@/data/review-file-types";
+
+export async function requestReviewFileUpload(payload: {
+  fileName: string;
+  contentType: string;
+  label?: string;
+}): Promise<ReviewFileUploadResponse> {
+  return apiClient.post<ReviewFileUploadResponse>(
+    "/api/review-files/upload-url",
+    payload,
+  );
+}
+
+export async function confirmReviewFileUpload(
+  id: string,
+): Promise<{ id: string; status: string; jobId: string }> {
+  return apiClient.post(`/api/review-files/${id}/confirm`);
+}
+
+export async function listReviewFiles(): Promise<ReviewFile[]> {
+  return apiClient.get<ReviewFile[]>("/api/review-files");
+}
+
+export async function deleteReviewFile(id: string): Promise<void> {
+  return apiClient.delete<void>(`/api/review-files/${id}`);
 }
 
 // ── Admin Teams ─────────────────────────────────────────────────────

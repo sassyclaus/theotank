@@ -1,77 +1,156 @@
-import { Upload, X } from "lucide-react";
-import { useCallback, useRef, type DragEvent } from "react";
+import { useState, useEffect } from "react";
+import { Upload, ChevronDown, ChevronUp, Plus } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import {
+  useReviewFiles,
+  useDeleteReviewFile,
+  getMostRecentReadyFile,
+} from "@/hooks/useReviewFiles";
+import { ReviewFileCard } from "./ReviewFileCard";
+import { ReviewFileList } from "./ReviewFileList";
+import { ReviewFileUploadDialog } from "./ReviewFileUploadDialog";
 
 interface ReviewPanelProps {
-  fileName: string | null;
+  selectedFileId: string | null;
   focusPrompt: string;
-  onFileChange: (name: string | null) => void;
+  onFileIdChange: (id: string | null) => void;
   onFocusPromptChange: (value: string) => void;
 }
 
 export function ReviewPanel({
-  fileName,
+  selectedFileId,
   focusPrompt,
-  onFileChange,
+  onFileIdChange,
   onFocusPromptChange,
 }: ReviewPanelProps) {
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { data: files } = useReviewFiles();
+  const deleteMutation = useDeleteReviewFile();
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [listExpanded, setListExpanded] = useState(false);
 
-  const handleDrop = useCallback(
-    (e: DragEvent) => {
-      e.preventDefault();
-      const file = e.dataTransfer.files[0];
-      if (file) onFileChange(file.name);
-    },
-    [onFileChange],
-  );
+  // Auto-select most recent ready file if nothing selected
+  useEffect(() => {
+    if (!selectedFileId && files) {
+      const readyFile = getMostRecentReadyFile(files);
+      if (readyFile) {
+        onFileIdChange(readyFile.id);
+      }
+    }
+  }, [selectedFileId, files, onFileIdChange]);
 
-  const handleDragOver = useCallback((e: DragEvent) => {
-    e.preventDefault();
-  }, []);
+  const selectedFile = files?.find((f) => f.id === selectedFileId);
+  const hasFiles = files && files.length > 0;
 
-  const handleFileSelect = useCallback(() => {
-    const file = fileInputRef.current?.files?.[0];
-    if (file) onFileChange(file.name);
-  }, [onFileChange]);
+  const handleDelete = (id: string) => {
+    deleteMutation.mutate(id);
+    if (id === selectedFileId) {
+      onFileIdChange(null);
+    }
+  };
 
+  // ── Empty state ──────────────────────────────────────────────────
+  if (!hasFiles) {
+    return (
+      <div className="space-y-4">
+        <div
+          onClick={() => setUploadOpen(true)}
+          className="flex cursor-pointer flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-surface py-10 transition-colors hover:border-teal/40 hover:bg-teal-light/50"
+        >
+          <Upload className="h-10 w-10 text-text-secondary/30" />
+          <div className="text-center">
+            <p className="text-sm font-medium text-text-primary">
+              Add your first content for review
+            </p>
+            <p className="mt-1 text-xs text-text-secondary/60">
+              Upload a document, audio, or video file
+            </p>
+          </div>
+        </div>
+
+        <div>
+          <label className="mb-1.5 block text-sm font-medium text-text-primary">
+            Focus prompt{" "}
+            <span className="font-normal text-text-secondary">(optional)</span>
+          </label>
+          <Input
+            value={focusPrompt}
+            onChange={(e) => onFocusPromptChange(e.target.value)}
+            placeholder="e.g. Focus on the soteriology in chapter 3"
+          />
+        </div>
+
+        <ReviewFileUploadDialog
+          open={uploadOpen}
+          onOpenChange={setUploadOpen}
+        />
+      </div>
+    );
+  }
+
+  // ── Has files ────────────────────────────────────────────────────
   return (
     <div className="space-y-4">
       <div>
-        <label className="mb-1.5 block text-sm font-medium text-text-primary">
-          Document
-        </label>
-        {fileName ? (
-          <div className="flex items-center justify-between rounded-lg border border-teal/30 bg-teal-light px-4 py-3">
-            <span className="text-sm text-text-primary">{fileName}</span>
+        <div className="mb-1.5 flex items-center justify-between">
+          <label className="text-sm font-medium text-text-primary">
+            Content
+          </label>
+          <button
+            onClick={() => setUploadOpen(true)}
+            className="inline-flex items-center gap-1 text-xs font-medium text-teal transition-colors hover:text-teal/80"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Upload new
+          </button>
+        </div>
+
+        {/* Selected file card */}
+        {selectedFile ? (
+          <div>
+            <ReviewFileCard file={selectedFile} selected compact />
             <button
-              onClick={() => onFileChange(null)}
-              className="rounded-md p-1 text-text-secondary/60 transition-colors hover:bg-teal/10 hover:text-text-primary"
+              onClick={() => setListExpanded(!listExpanded)}
+              className="mt-1 inline-flex items-center gap-0.5 text-xs text-text-secondary transition-colors hover:text-text-primary"
             >
-              <X className="h-4 w-4" />
+              {listExpanded ? (
+                <>
+                  <ChevronUp className="h-3 w-3" />
+                  Hide files
+                </>
+              ) : (
+                <>
+                  <ChevronDown className="h-3 w-3" />
+                  Change ({files.length} file{files.length !== 1 ? "s" : ""})
+                </>
+              )}
             </button>
           </div>
         ) : (
-          <div
-            onDrop={handleDrop}
-            onDragOver={handleDragOver}
-            onClick={() => fileInputRef.current?.click()}
-            className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-surface py-8 text-text-secondary transition-colors hover:border-teal/40 hover:bg-teal-light/50"
-          >
-            <Upload className="h-8 w-8 text-text-secondary/40" />
-            <p className="text-sm">
-              Drop a file here or{" "}
-              <span className="font-medium text-teal">browse</span>
-            </p>
-            <p className="text-xs text-text-secondary/60">
-              PDF, DOCX, or TXT up to 10 MB
-            </p>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".pdf,.docx,.txt"
-              onChange={handleFileSelect}
-              className="hidden"
+          <div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setListExpanded(!listExpanded)}
+              className="w-full"
+            >
+              Select a file (
+              {files.filter((f) => f.status === "ready").length} ready)
+            </Button>
+          </div>
+        )}
+
+        {/* Expandable file list */}
+        {listExpanded && (
+          <div className="mt-2 rounded-lg border border-surface bg-surface/30 p-2">
+            <ReviewFileList
+              files={files}
+              selectedId={selectedFileId}
+              onSelect={(id) => {
+                onFileIdChange(id);
+                setListExpanded(false);
+              }}
+              onDelete={handleDelete}
             />
           </div>
         )}
@@ -88,6 +167,8 @@ export function ReviewPanel({
           placeholder="e.g. Focus on the soteriology in chapter 3"
         />
       </div>
+
+      <ReviewFileUploadDialog open={uploadOpen} onOpenChange={setUploadOpen} />
     </div>
   );
 }

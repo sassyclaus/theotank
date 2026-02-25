@@ -2,7 +2,8 @@
 
 export type CreateResultPayload =
   | { toolType: "ask"; teamId: string; question: string }
-  | { toolType: "poll"; teamId: string; question: string; options: string[] };
+  | { toolType: "poll"; teamId: string; question: string; options: string[] }
+  | { toolType: "review"; teamId: string; reviewFileId: string; focusPrompt?: string };
 
 // ── Result Summary (from GET /api/results) ──────────────────────────
 
@@ -99,4 +100,28 @@ export interface PollContentResponse {
     justification: string;
   }[];
   errors: { theologianName: string; error: string }[];
+}
+
+// ── Review Content (from GET /api/results/:id/content) ──────────────
+
+export interface ReviewContentGrade {
+  theologian: {
+    name: string;
+    initials: string;
+    dates: string;
+    tradition: string;
+    color: string;
+  };
+  grade: string;
+  reaction: string;
+  strengths: string[];
+  weaknesses: string[];
+}
+
+export interface ReviewContentResponse {
+  reviewFileLabel: string;
+  focusPrompt: string | null;
+  overallGrade: string;
+  summary: string;
+  grades: ReviewContentGrade[];
 }

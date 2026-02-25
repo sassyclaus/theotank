@@ -8,9 +8,10 @@ import { MiniBarChart } from "./MiniBarChart";
 
 interface LibraryResultCardProps {
   item: MyLibraryItem;
+  onRetry?: (id: string) => void;
 }
 
-export function LibraryResultCard({ item }: LibraryResultCardProps) {
+export function LibraryResultCard({ item, onRetry }: LibraryResultCardProps) {
   const navigate = useNavigate();
   const colors = TOOL_COLORS[item.tool];
 
@@ -54,7 +55,10 @@ export function LibraryResultCard({ item }: LibraryResultCardProps) {
           <h3 className="text-sm font-medium text-text-primary">{item.title}</h3>
           <p className="mt-2 text-xs text-terracotta">
             Something went wrong.{" "}
-            <button className="underline hover:text-terracotta/80">
+            <button
+              className="underline hover:text-terracotta/80"
+              onClick={() => onRetry?.(item.id)}
+            >
               <RotateCcw className="mr-0.5 inline h-3 w-3" />
               Retry
             </button>
