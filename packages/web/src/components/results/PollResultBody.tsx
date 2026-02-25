@@ -2,25 +2,24 @@ import { Card, CardContent } from "@/components/ui/card";
 import { TheologianHeader } from "./AskResultBody";
 import type { PollResult } from "@/data/mock-results";
 
+// 6-color palette optimized for visual distinction on thin chart lines.
+// Hues are spread ~60° apart around the color wheel to avoid confusion.
+const OPTION_COLORS_HEX = [
+  "#1B6B6D", // teal (brand)
+  "#B8963E", // gold (brand)
+  "#7A2E2E", // oxblood (brand)
+  "#3D6DAA", // cobalt — distinct blue, far from teal & sage
+  "#9B5FC0", // amethyst — purple fills the gap between blue & red
+  "#C4573A", // terracotta (brand)
+];
+
 const OPTION_COLORS_BG = [
   "bg-teal",
   "bg-gold",
-  "bg-text-secondary/40",
   "bg-oxblood",
-];
-
-const OPTION_COLORS_STROKE = [
-  "#1B6B6D",
-  "#B8963E",
-  "#9CA3AF",
-  "#7A2E2E",
-];
-
-const OPTION_COLORS_DOT = [
-  "fill-teal",
-  "fill-gold",
-  "fill-text-secondary/60",
-  "fill-oxblood",
+  "bg-[#3D6DAA]",
+  "bg-[#9B5FC0]",
+  "bg-terracotta",
 ];
 
 interface PollResultBodyProps {
@@ -33,7 +32,9 @@ export function PollResultBody({ result }: PollResultBodyProps) {
       {/* Poll Summary */}
       <Card>
         <CardContent>
-          <h2 className="mb-3 font-serif text-xl font-semibold">Poll Summary</h2>
+          <h2 className="mb-3 font-serif text-xl font-semibold">
+            Poll Summary
+          </h2>
           <p className="text-base leading-relaxed text-text-secondary">
             {result.summary}
           </p>
@@ -73,14 +74,17 @@ export function PollResultBody({ result }: PollResultBodyProps) {
       <Card>
         <CardContent>
           <h2 className="mb-6 font-serif text-xl font-semibold">
-            How responses vary across eras
+            How responses vary across time
           </h2>
           <CenturyLineChart result={result} />
 
           {/* Legend */}
           <div className="mt-6 flex flex-wrap gap-4">
             {result.options.map((opt, i) => (
-              <div key={opt.label} className="flex items-center gap-1.5 text-xs text-text-secondary">
+              <div
+                key={opt.label}
+                className="flex items-center gap-1.5 text-xs text-text-secondary"
+              >
                 <div
                   className={`h-2.5 w-2.5 rounded-full ${OPTION_COLORS_BG[i % OPTION_COLORS_BG.length]}`}
                 />
@@ -92,7 +96,9 @@ export function PollResultBody({ result }: PollResultBodyProps) {
       </Card>
 
       {/* Individual Theologian Selections */}
-      <h2 className="font-serif text-xl font-semibold">Individual Selections</h2>
+      <h2 className="font-serif text-xl font-semibold">
+        Individual Selections
+      </h2>
       <div className="space-y-6">
         {result.theologianSelections.map((sel) => (
           <Card key={sel.theologian.name}>
@@ -112,6 +118,37 @@ export function PollResultBody({ result }: PollResultBodyProps) {
       </div>
     </div>
   );
+}
+
+// ── Catmull-Rom to cubic bezier conversion ─────────────────────────
+
+function catmullRomPath(
+  points: { x: number; y: number }[],
+  tension = 0.5,
+): string {
+  if (points.length < 2) return "";
+  if (points.length === 2) {
+    return `M${points[0].x},${points[0].y}L${points[1].x},${points[1].y}`;
+  }
+
+  const alpha = 1 - tension;
+  let d = `M${points[0].x},${points[0].y}`;
+
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[Math.max(i - 1, 0)];
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const p3 = points[Math.min(i + 2, points.length - 1)];
+
+    const cp1x = p1.x + ((p2.x - p0.x) * alpha) / 6;
+    const cp1y = p1.y + ((p2.y - p0.y) * alpha) / 6;
+    const cp2x = p2.x - ((p3.x - p1.x) * alpha) / 6;
+    const cp2y = p2.y - ((p3.y - p1.y) * alpha) / 6;
+
+    d += `C${cp1x},${cp1y},${cp2x},${cp2y},${p2.x},${p2.y}`;
+  }
+
+  return d;
 }
 
 // ── SVG Multi-line Chart ────────────────────────────────────────────
@@ -136,10 +173,10 @@ function CenturyLineChart({ result }: { result: PollResult }) {
 
   // X positions for each era
   const xPositions = eras.map(
-    (_, i) => paddingLeft + (i / (eras.length - 1)) * chartW,
+    (_, i) => paddingLeft + (i / Math.max(eras.length - 1, 1)) * chartW,
   );
 
-  // Build polyline points per option
+  // Build smooth-curve points per option
   const lines = optionLabels.map((label, optIdx) => {
     const points = centuryTrend.map((entry, eraIdx) => {
       const opt = entry.options.find((o) => o.label === label);
@@ -152,7 +189,11 @@ function CenturyLineChart({ result }: { result: PollResult }) {
   });
 
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="w-full" preserveAspectRatio="xMidYMid meet">
+    <svg
+      viewBox={`0 0 ${width} ${height}`}
+      className="w-full"
+      preserveAspectRatio="xMidYMid meet"
+    >
       {/* Y grid lines + labels */}
       {yTicks.map((tick) => {
         const y = paddingTop + chartH - (tick / 100) * chartH;
@@ -179,7 +220,7 @@ function CenturyLineChart({ result }: { result: PollResult }) {
         );
       })}
 
-      {/* X axis labels (era names) */}
+      {/* X axis labels */}
       {eras.map((era, i) => (
         <text
           key={era}
@@ -193,19 +234,18 @@ function CenturyLineChart({ result }: { result: PollResult }) {
         </text>
       ))}
 
-      {/* Lines + dots */}
+      {/* Smooth lines + dots */}
       {lines.map(({ optIdx, points }) => {
-        const color = OPTION_COLORS_STROKE[optIdx % OPTION_COLORS_STROKE.length];
-        const dotClass = OPTION_COLORS_DOT[optIdx % OPTION_COLORS_DOT.length];
-        const polyline = points.map((p) => `${p.x},${p.y}`).join(" ");
+        const color =
+          OPTION_COLORS_HEX[optIdx % OPTION_COLORS_HEX.length];
+        const d = catmullRomPath(points);
         return (
           <g key={optIdx}>
-            <polyline
-              points={polyline}
+            <path
+              d={d}
               fill="none"
               stroke={color}
               strokeWidth={2.5}
-              strokeLinejoin="round"
               strokeLinecap="round"
             />
             {points.map((p, pi) => (
@@ -213,10 +253,10 @@ function CenturyLineChart({ result }: { result: PollResult }) {
                 key={pi}
                 cx={p.x}
                 cy={p.y}
-                r={4}
-                className={dotClass}
+                r={3}
+                fill={color}
                 stroke="white"
-                strokeWidth={2}
+                strokeWidth={1.5}
               />
             ))}
           </g>

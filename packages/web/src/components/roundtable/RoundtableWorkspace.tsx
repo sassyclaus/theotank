@@ -122,25 +122,52 @@ export function RoundtableWorkspace() {
 
   // ── CTA handler ─────────────────────────────────────────────────
   const handleSubmit = useCallback(async () => {
-    if (!selectedTeam || activeMode !== "ask" || !askQuestion.trim()) return;
+    if (!selectedTeam) return;
 
-    setWsPhase({ phase: "submitting" });
+    if (activeMode === "ask") {
+      if (!askQuestion.trim()) return;
 
-    try {
-      const result = await createResult.mutateAsync({
-        toolType: "ask",
-        teamId: selectedTeam,
-        question: askQuestion.trim(),
-      });
-      setWsPhase({ phase: "deliberating", resultId: result.id });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Submission failed";
-      setWsPhase({ phase: "error", message });
+      setWsPhase({ phase: "submitting" });
+
+      try {
+        const result = await createResult.mutateAsync({
+          toolType: "ask",
+          teamId: selectedTeam,
+          question: askQuestion.trim(),
+        });
+        setWsPhase({ phase: "deliberating", resultId: result.id });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Submission failed";
+        setWsPhase({ phase: "error", message });
+      }
+    } else if (activeMode === "poll") {
+      if (!pollQuestion.trim()) return;
+      const trimmedOptions = pollOptions
+        .map((o) => o.trim())
+        .filter((o) => o.length > 0);
+      if (trimmedOptions.length < 2) return;
+
+      setWsPhase({ phase: "submitting" });
+
+      try {
+        const result = await createResult.mutateAsync({
+          toolType: "poll",
+          teamId: selectedTeam,
+          question: pollQuestion.trim(),
+          options: trimmedOptions,
+        });
+        setWsPhase({ phase: "deliberating", resultId: result.id });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Submission failed";
+        setWsPhase({ phase: "error", message });
+      }
     }
-  }, [selectedTeam, activeMode, askQuestion, createResult]);
+  }, [selectedTeam, activeMode, askQuestion, pollQuestion, pollOptions, createResult]);
 
   const handleReset = useCallback(() => {
     setAskQuestion("");
+    setPollQuestion("");
+    setPollOptions(["", ""]);
     setShowNudge(false);
     setWsPhase({ phase: "idle" });
   }, []);
@@ -158,7 +185,9 @@ export function RoundtableWorkspace() {
     isSubmitting ||
     selectedTeam === null ||
     (activeMode === "ask" && askQuestion.trim().length === 0) ||
-    (activeMode === "poll" && pollQuestion.trim().length === 0) ||
+    (activeMode === "poll" &&
+      (pollQuestion.trim().length === 0 ||
+        pollOptions.filter((o) => o.trim().length > 0).length < 2)) ||
     (activeMode === "review" && !reviewFileName);
 
   return (

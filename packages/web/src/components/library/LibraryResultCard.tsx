@@ -16,7 +16,10 @@ export function LibraryResultCard({ item }: LibraryResultCardProps) {
 
   if (item.status === "processing") {
     return (
-      <Card className="opacity-75">
+      <Card
+        className="cursor-pointer opacity-75 transition-shadow hover:shadow-md"
+        onClick={() => navigate(`/library/${item.id}`)}
+      >
         <CardContent>
           <div className="mb-2 flex items-center gap-2">
             <span className={cn("rounded-full px-2.5 py-0.5 text-xs font-medium", colors.bg, colors.text)}>

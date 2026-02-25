@@ -1,9 +1,11 @@
 import type { Job } from "@theotank/rds/schema";
 import { completeJob, failJob } from "../queue";
 import { processAsk } from "./ask";
+import { processPoll } from "./poll";
 
 const processors: Record<string, (job: Job) => Promise<void>> = {
   ask: processAsk,
+  poll: processPoll,
 };
 
 export async function processJob(job: Job): Promise<void> {

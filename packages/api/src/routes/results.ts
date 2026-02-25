@@ -18,11 +18,18 @@ const app = new Hono();
 // POST /api/results — create result + job in transaction
 app.post("/", async (c) => {
   const userId = c.get("userId" as never) as string;
-  const body = await c.req.json<{
-    toolType: "ask";
-    teamId: string;
-    question: string;
-  }>();
+  const body = await c.req.json<
+    | { toolType: "ask"; teamId: string; question: string }
+    | { toolType: "poll"; teamId: string; question: string; options: string[] }
+  >();
+
+  // Validate poll-specific payload
+  if (body.toolType === "poll") {
+    const { options } = body;
+    if (!Array.isArray(options) || options.length < 2) {
+      return c.json({ error: "Poll requires at least 2 options" }, 400);
+    }
+  }
 
   const db = getDb();
 
@@ -83,6 +90,12 @@ app.post("/", async (c) => {
         )
       );
 
+    // Build input payload based on tool type
+    const inputPayload =
+      body.toolType === "poll"
+        ? { question: body.question, options: body.options }
+        : { question: body.question };
+
     // Insert result row
     const [resultRow] = await tx
       .insert(results)
@@ -90,7 +103,7 @@ app.post("/", async (c) => {
         userId,
         toolType: body.toolType,
         title: body.question,
-        inputPayload: { question: body.question },
+        inputPayload,
         teamSnapshotId: snapshot.id,
         resultTypeId: resultType.id,
         status: "pending",

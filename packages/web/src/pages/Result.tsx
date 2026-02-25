@@ -8,8 +8,8 @@ import { ResearchResultBody } from "@/components/results/ResearchResultBody";
 import { ProgressTimeline } from "@/components/roundtable/ProgressTimeline";
 import { Card, CardContent } from "@/components/ui/card";
 import { getResultById } from "@/data/mock-results";
-import type { AskResult, FullResult } from "@/data/mock-results";
-import type { AskContentResponse } from "@/data/result-types";
+import type { AskResult, PollResult, PollOption, CenturyTrendEntry, FullResult } from "@/data/mock-results";
+import type { AskContentResponse, PollContentResponse } from "@/data/result-types";
 
 export default function Result() {
   const { id } = useParams<{ id: string }>();
@@ -98,17 +98,31 @@ export default function Result() {
 
     // Completed — render with API content
     if (apiResult.status === "completed" && content) {
+      const dateStr = new Date(apiResult.createdAt).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
+
+      if (apiResult.toolType === "poll") {
+        const pollContent = content as PollContentResponse;
+        const mapped = mapPollContent(apiResult, pollContent, dateStr);
+
+        return (
+          <div className="mx-auto max-w-4xl px-4 py-12 lg:px-8">
+            <ReportHeader result={mapped} />
+            <PollResultBody result={mapped} />
+          </div>
+        );
+      }
+
       const askContent = content as AskContentResponse;
       const mapped: AskResult = {
         id: apiResult.id,
         tool: "ask",
         title: apiResult.title,
         team: apiResult.teamName ?? "Panel",
-        date: new Date(apiResult.createdAt).toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-          year: "numeric",
-        }),
+        date: dateStr,
         summary: askContent.synthesis.comparison,
         perspectives: askContent.perspectives.map((p) => ({
           theologian: p.theologian,
@@ -165,4 +179,88 @@ export default function Result() {
       </Link>
     </div>
   );
+}
+
+// ── Poll content mapping ────────────────────────────────────────────
+
+function birthYearToCentury(born: number): string {
+  const century = Math.ceil(born / 100);
+  const suffix =
+    century % 10 === 1 && century !== 11
+      ? "st"
+      : century % 10 === 2 && century !== 12
+        ? "nd"
+        : century % 10 === 3 && century !== 13
+          ? "rd"
+          : "th";
+  return `${century}${suffix} c.`;
+}
+
+function mapPollContent(
+  apiResult: { id: string; title: string; teamName: string | null; createdAt: string },
+  pollContent: PollContentResponse,
+  dateStr: string,
+): PollResult {
+  const { optionLabels, theologianSelections } = pollContent;
+  const totalPolled = theologianSelections.length;
+
+  // Aggregate option counts
+  const countMap: Record<string, number> = {};
+  for (const label of optionLabels) countMap[label] = 0;
+  for (const s of theologianSelections) {
+    countMap[s.selection] = (countMap[s.selection] ?? 0) + 1;
+  }
+  const options: PollOption[] = optionLabels.map((label) => ({
+    label,
+    count: countMap[label],
+    percentage: totalPolled > 0 ? Math.round((countMap[label] / totalPolled) * 100) : 0,
+  }));
+
+  // Compute century trend from birth years
+  const centuryMap: Record<string, Record<string, number>> = {};
+  for (const s of theologianSelections) {
+    if (s.theologian.born === null) continue;
+    const century = birthYearToCentury(s.theologian.born);
+    if (!centuryMap[century]) {
+      centuryMap[century] = {};
+      for (const label of optionLabels) centuryMap[century][label] = 0;
+    }
+    centuryMap[century][s.selection] = (centuryMap[century][s.selection] ?? 0) + 1;
+  }
+  const centuryTrend: CenturyTrendEntry[] = Object.keys(centuryMap)
+    .sort((a, b) => parseInt(a) - parseInt(b))
+    .map((century) => {
+      const counts = centuryMap[century];
+      const total = Object.values(counts).reduce((a, b) => a + b, 0);
+      return {
+        era: century,
+        options: optionLabels.map((label) => ({
+          label,
+          percentage: total > 0 ? Math.round((counts[label] / total) * 100) : 0,
+        })),
+      };
+    });
+
+  return {
+    id: apiResult.id,
+    tool: "poll",
+    title: apiResult.title,
+    team: apiResult.teamName ?? "Panel",
+    date: dateStr,
+    summary: pollContent.summary,
+    totalPolled,
+    options,
+    centuryTrend,
+    theologianSelections: theologianSelections.map((s) => ({
+      theologian: {
+        name: s.theologian.name,
+        initials: s.theologian.initials,
+        dates: s.theologian.dates,
+        tradition: s.theologian.tradition,
+        color: s.theologian.color,
+      },
+      selection: s.selection,
+      justification: s.justification,
+    })),
+  };
 }

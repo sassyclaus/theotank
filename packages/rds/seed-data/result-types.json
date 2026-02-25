@@ -58,63 +58,44 @@
   {
     "kind": "poll",
     "version": 1,
-    "description": "Initial Poll result type — aggregated theologian votes with trend breakdowns",
+    "description": "Poll result type — raw theologian selections with LLM-generated summary",
     "contentSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
-      "required": ["tool", "summary", "totalPolled", "options", "centuryTrend", "theologianSelections"],
+      "required": ["question", "optionLabels", "summary", "theologianSelections", "errors"],
       "properties": {
-        "tool": { "const": "poll" },
+        "question": { "type": "string" },
+        "optionLabels": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
         "summary": { "type": "string" },
-        "totalPolled": { "type": "integer" },
-        "options": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "required": ["label", "percentage", "count"],
-            "properties": {
-              "label": { "type": "string" },
-              "percentage": { "type": "number" },
-              "count": { "type": "integer" }
-            }
-          }
-        },
-        "centuryTrend": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "required": ["era", "options"],
-            "properties": {
-              "era": { "type": "string" },
-              "options": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "required": ["label", "percentage"],
-                  "properties": {
-                    "label": { "type": "string" },
-                    "percentage": { "type": "number" }
-                  }
-                }
-              }
-            }
-          }
-        },
         "theologianSelections": {
           "type": "array",
           "items": {
             "type": "object",
             "required": ["theologian", "selection", "justification"],
             "properties": {
-              "theologian": { "$ref": "#/$defs/resultTheologian" },
+              "theologian": { "$ref": "#/$defs/pollTheologian" },
               "selection": { "type": "string" },
               "justification": { "type": "string" }
+            }
+          }
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["theologianName", "error"],
+            "properties": {
+              "theologianName": { "type": "string" },
+              "error": { "type": "string" }
             }
           }
         }
       },
       "$defs": {
-        "resultTheologian": {
+        "pollTheologian": {
           "type": "object",
           "required": ["name", "initials", "dates", "tradition", "color"],
           "properties": {
@@ -122,7 +103,8 @@
             "initials": { "type": "string" },
             "dates": { "type": "string" },
             "tradition": { "type": "string" },
-            "color": { "type": "string" }
+            "color": { "type": "string" },
+            "born": { "type": ["integer", "null"] }
           }
         }
       }

@@ -1,10 +1,8 @@
 // ── API Payloads ────────────────────────────────────────────────────
 
-export interface CreateResultPayload {
-  toolType: "ask";
-  teamId: string;
-  question: string;
-}
+export type CreateResultPayload =
+  | { toolType: "ask"; teamId: string; question: string }
+  | { toolType: "poll"; teamId: string; question: string; options: string[] };
 
 // ── Result Summary (from GET /api/results) ──────────────────────────
 
@@ -28,7 +26,7 @@ export interface ResultDetail {
   toolType: "ask" | "poll" | "review" | "research";
   title: string;
   status: "pending" | "processing" | "completed" | "failed";
-  inputPayload: { question?: string };
+  inputPayload: { question?: string; options?: string[] };
   previewData: unknown;
   previewExcerpt: string | null;
   contentKey: string | null;
@@ -80,4 +78,25 @@ export interface AskContentResponse {
     keyDisagreements: string[];
     sermonIdeas: string[];
   };
+}
+
+// ── Poll Content (from GET /api/results/:id/content) ────────────────
+
+export interface PollContentResponse {
+  question: string;
+  optionLabels: string[];
+  summary: string;
+  theologianSelections: {
+    theologian: {
+      name: string;
+      initials: string;
+      dates: string;
+      tradition: string;
+      color: string;
+      born: number | null;
+    };
+    selection: string;
+    justification: string;
+  }[];
+  errors: { theologianName: string; error: string }[];
 }
