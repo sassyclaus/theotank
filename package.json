@@ -15,6 +15,7 @@
     "api:dev": "bun run --watch packages/api/src/index.ts",
     "web:dev": "bun run --cwd packages/web dev",
     "dev": "docker compose up -d && bun run --watch packages/api/src/index.ts & bun run --cwd packages/web dev & bun run --cwd packages/rds db:studio & wait",
-    "worker:rebuild": "docker compose up -d --build worker"
+    "worker:rebuild": "docker compose up -d --build worker",
+    "worker:logs": "docker compose logs -f worker"
   }
 }

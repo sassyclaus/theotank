@@ -14,6 +14,7 @@ import type {
   AskContentResponse,
   PollContentResponse,
   ReviewContentResponse,
+  ResearchContentResponse,
 } from "@/data/result-types";
 import type {
   AdminNativeTeam,
@@ -86,8 +87,8 @@ export async function getResultProgress(id: string): Promise<ProgressLogEntry[]>
   return apiClient.get<ProgressLogEntry[]>(`/api/results/${id}/progress`);
 }
 
-export async function getResultContent(id: string): Promise<AskContentResponse | PollContentResponse | ReviewContentResponse> {
-  return apiClient.get<AskContentResponse | PollContentResponse | ReviewContentResponse>(`/api/results/${id}/content`);
+export async function getResultContent(id: string): Promise<AskContentResponse | PollContentResponse | ReviewContentResponse | ResearchContentResponse> {
+  return apiClient.get<AskContentResponse | PollContentResponse | ReviewContentResponse | ResearchContentResponse>(`/api/results/${id}/content`);
 }
 
 export async function retryResult(

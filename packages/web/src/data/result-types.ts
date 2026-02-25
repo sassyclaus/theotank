@@ -3,7 +3,8 @@
 export type CreateResultPayload =
   | { toolType: "ask"; teamId: string; question: string }
   | { toolType: "poll"; teamId: string; question: string; options: string[] }
-  | { toolType: "review"; teamId: string; reviewFileId: string; focusPrompt?: string };
+  | { toolType: "review"; teamId: string; reviewFileId: string; focusPrompt?: string }
+  | { toolType: "research"; theologianId: string; question: string };
 
 // ── Result Summary (from GET /api/results) ──────────────────────────
 
@@ -17,6 +18,7 @@ export interface ResultSummary {
   createdAt: string;
   completedAt: string | null;
   teamName: string | null;
+  theologianName: string | null;
 }
 
 // ── Result Detail (from GET /api/results/:id) ───────────────────────
@@ -42,6 +44,8 @@ export interface ResultDetail {
     initials: string | null;
     tradition: string | null;
   }> | null;
+  theologianName: string | null;
+  theologianSlug: string | null;
 }
 
 // ── Progress Log (from GET /api/results/:id/progress) ───────────────
@@ -124,4 +128,36 @@ export interface ReviewContentResponse {
   overallGrade: string;
   summary: string;
   grades: ReviewContentGrade[];
+}
+
+// ── Research Content (from GET /api/results/:id/content) ────────────
+
+export interface ResearchCitationSource {
+  workTitle: string;
+  canonicalRef: string;
+  originalText: string;
+  translation: string;
+}
+
+export interface ResearchCitationItem {
+  id: string;
+  marker: string;
+  claimText: string;
+  claimType: "paraphrase" | "quote" | "inference";
+  confidence: "HIGH" | "MEDIUM" | "LOW";
+  sources: ResearchCitationSource[];
+}
+
+export interface ResearchContentResponse {
+  tool: "research";
+  question: string;
+  theologianName: string;
+  theologianSlug: string;
+  responseText: string;
+  citations: ResearchCitationItem[];
+  metadata: {
+    anglesProcessed: number;
+    totalClaims: number;
+    evidenceItemsUsed: number;
+  };
 }

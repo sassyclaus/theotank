@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { logger } from "hono/logger";
 import { clerkAuth } from "./middleware/auth";
 import { adminAuth } from "./middleware/admin-auth";
 import theologians from "./routes/theologians";
@@ -9,6 +10,9 @@ import reviewFilesRoute from "./routes/review-files";
 import admin from "./routes/admin";
 
 const app = new Hono();
+
+// Request/response logging
+app.use("*", logger());
 
 // CORS — allow Vite dev server
 app.use(

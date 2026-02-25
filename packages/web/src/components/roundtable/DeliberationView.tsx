@@ -7,9 +7,10 @@ import { ProgressTimeline } from "./ProgressTimeline";
 interface DeliberationViewProps {
   resultId: string;
   onReset: () => void;
+  variant?: "roundtable" | "research";
 }
 
-export function DeliberationView({ resultId, onReset }: DeliberationViewProps) {
+export function DeliberationView({ resultId, onReset, variant = "roundtable" }: DeliberationViewProps) {
   const { data: result } = useResult(resultId, true);
   const { data: logs } = useResultProgress(resultId, true);
 
@@ -27,14 +28,14 @@ export function DeliberationView({ resultId, onReset }: DeliberationViewProps) {
             <div
               className={`h-3 w-3 rounded-full ${
                 isActive
-                  ? "animate-pulse bg-teal"
+                  ? variant === "research" ? "animate-pulse bg-oxblood" : "animate-pulse bg-teal"
                   : isCompleted
-                    ? "bg-teal"
+                    ? variant === "research" ? "bg-oxblood" : "bg-teal"
                     : "bg-terracotta"
               }`}
             />
             <h2 className="font-serif text-xl font-semibold">
-              {isActive && "Your panel is deliberating"}
+              {isActive && (variant === "research" ? "Searching primary sources..." : "Your panel is deliberating")}
               {isCompleted && "Your result is ready"}
               {isFailed && "Something went wrong"}
             </h2>

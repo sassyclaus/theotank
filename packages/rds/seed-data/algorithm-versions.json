@@ -35,5 +35,36 @@
       }
     },
     "isActive": true
+  },
+  {
+    "toolType": "research",
+    "version": "1.0.0",
+    "description": "Research RAG pipeline — multi-path retrieval with claim verification and citation-grounded synthesis",
+    "config": {
+      "defaultModels": {
+        "interpreter": { "model": "gpt-5-mini-2025-08-07", "provider": "openai" },
+        "search_planner": { "model": "gpt-5-mini-2025-08-07", "provider": "openai" },
+        "translator": { "model": "gpt-5-mini-2025-08-07", "provider": "openai" },
+        "claim_extractor": { "model": "gpt-5-mini-2025-08-07", "provider": "openai" },
+        "verifier": { "model": "gpt-5-mini-2025-08-07", "provider": "openai" },
+        "synthesizer": { "model": "gpt-5.1", "provider": "openai" }
+      },
+      "embedding": { "model": "text-embedding-3-small", "dimensions": 1536 },
+      "retrieval": {
+        "maxLoci": 12,
+        "maxPerWork": 4,
+        "maxEvidenceItems": 25,
+        "maxAngles": 4,
+        "contextWindowParagraphs": 1,
+        "topNodesPerAngle": 10,
+        "topParagraphsPerNode": 3,
+        "topDirectParagraphs": 20,
+        "topTrigramResults": 15,
+        "topTranslationFtsResults": 15,
+        "topTranslationSemanticResults": 15
+      },
+      "claims": { "maxClaimsPerLocus": 5, "maxLociForSynthesis": 10 }
+    },
+    "isActive": true
   }
 ]

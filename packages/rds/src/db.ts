@@ -11,7 +11,9 @@ export function getDb() {
     if (!url) {
       throw new Error("DATABASE_URL environment variable is required");
     }
-    client = postgres(url);
+    client = postgres(url, {
+      onnotice: () => {},  // suppress collation mismatch warnings
+    });
     db = drizzle(client, { schema });
   }
   return db;

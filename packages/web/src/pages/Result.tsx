@@ -9,7 +9,7 @@ import { ProgressTimeline } from "@/components/roundtable/ProgressTimeline";
 import { Card, CardContent } from "@/components/ui/card";
 import { getResultById } from "@/data/mock-results";
 import type { AskResult, PollResult, PollOption, CenturyTrendEntry, FullResult } from "@/data/mock-results";
-import type { AskContentResponse, PollContentResponse, ReviewContentResponse } from "@/data/result-types";
+import type { AskContentResponse, PollContentResponse, ReviewContentResponse, ResearchContentResponse } from "@/data/result-types";
 
 export default function Result() {
   const { id } = useParams<{ id: string }>();
@@ -47,20 +47,21 @@ export default function Result() {
   if (apiResult) {
     // In-progress state
     if (isActive(apiResult.status)) {
+      const isResearch = apiResult.toolType === "research";
       return (
         <div className="mx-auto max-w-4xl px-4 py-12 lg:px-8">
           <Link
             to="/library"
-            className="mb-8 inline-flex items-center gap-1.5 text-sm font-medium text-teal hover:underline"
+            className={`mb-8 inline-flex items-center gap-1.5 text-sm font-medium hover:underline ${isResearch ? "text-oxblood" : "text-teal"}`}
           >
             &larr; Library
           </Link>
           <Card>
             <CardContent className="space-y-6">
               <div className="flex items-center gap-3">
-                <div className="h-3 w-3 animate-pulse rounded-full bg-teal" />
+                <div className={`h-3 w-3 animate-pulse rounded-full ${isResearch ? "bg-oxblood" : "bg-teal"}`} />
                 <h2 className="font-serif text-xl font-semibold">
-                  Your panel is deliberating
+                  {isResearch ? "Searching primary sources..." : "Your panel is deliberating"}
                 </h2>
               </div>
               <h3 className="text-lg font-medium">{apiResult.title}</h3>
@@ -143,6 +144,33 @@ export default function Result() {
         );
       }
 
+      if (apiResult.toolType === "research") {
+        const researchContent = content as ResearchContentResponse;
+        const mapped: FullResult = {
+          id: apiResult.id,
+          tool: "research",
+          title: apiResult.title,
+          team: apiResult.theologianName ?? researchContent.theologianName,
+          date: dateStr,
+          theologianName: researchContent.theologianName,
+          responseText: researchContent.responseText,
+          citations: researchContent.citations.map((c) => ({
+            id: c.id,
+            marker: c.marker,
+            source: c.sources[0]?.canonicalRef ?? "Unknown",
+            originalText: c.sources[0]?.originalText ?? "",
+            translation: c.sources[0]?.translation ?? "",
+          })),
+        };
+
+        return (
+          <div className="mx-auto max-w-4xl px-4 py-12 lg:px-8">
+            <ReportHeader result={mapped} />
+            <ResearchResultBody content={researchContent} />
+          </div>
+        );
+      }
+
       // Default: ask
       const askContent = content as AskContentResponse;
       const mapped: AskResult = {
@@ -187,7 +215,31 @@ export default function Result() {
         {mockResult.tool === "ask" && <AskResultBody result={mockResult} />}
         {mockResult.tool === "poll" && <PollResultBody result={mockResult} />}
         {mockResult.tool === "review" && <ReviewResultBody result={mockResult} />}
-        {mockResult.tool === "research" && <ResearchResultBody result={mockResult} />}
+        {mockResult.tool === "research" && (
+          <ResearchResultBody
+            content={{
+              tool: "research",
+              question: mockResult.title,
+              theologianName: mockResult.theologianName,
+              theologianSlug: "",
+              responseText: mockResult.responseText,
+              citations: mockResult.citations.map((c) => ({
+                id: c.id,
+                marker: c.marker,
+                claimText: c.source,
+                claimType: "paraphrase" as const,
+                confidence: "HIGH" as const,
+                sources: [{
+                  workTitle: c.source.split(",")[0] ?? c.source,
+                  canonicalRef: c.source,
+                  originalText: c.originalText,
+                  translation: c.translation,
+                }],
+              })),
+              metadata: { anglesProcessed: 0, totalClaims: mockResult.citations.length, evidenceItemsUsed: 0 },
+            }}
+          />
+        )}
       </div>
     );
   }

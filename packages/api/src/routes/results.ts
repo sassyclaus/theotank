@@ -23,6 +23,7 @@ app.post("/", async (c) => {
     | { toolType: "ask"; teamId: string; question: string }
     | { toolType: "poll"; teamId: string; question: string; options: string[] }
     | { toolType: "review"; teamId: string; reviewFileId: string; focusPrompt?: string }
+    | { toolType: "research"; theologianId: string; question: string }
   >();
 
   // Validate poll-specific payload
@@ -57,6 +58,26 @@ app.post("/", async (c) => {
     }
   }
 
+  // Validate research-specific payload
+  if (body.toolType === "research") {
+    if (!body.theologianId || !body.question) {
+      return c.json({ error: "theologianId and question are required for research" }, 400);
+    }
+    const db = getDb();
+    const [theo] = await db
+      .select()
+      .from(theologians)
+      .where(
+        and(
+          eq(theologians.id, body.theologianId),
+          eq(theologians.hasResearch, true)
+        )
+      );
+    if (!theo) {
+      return c.json({ error: "Theologian not found or research not available" }, 400);
+    }
+  }
+
   const db = getDb();
 
   const result = await db.transaction(async (tx) => {
@@ -71,6 +92,48 @@ app.post("/", async (c) => {
       throw new Error(`No active result type for ${body.toolType}`);
     }
 
+    // Research: no team snapshot needed
+    if (body.toolType === "research") {
+      const inputPayload = { question: body.question };
+      const title = body.question;
+
+      const [resultRow] = await tx
+        .insert(results)
+        .values({
+          userId,
+          toolType: body.toolType,
+          title,
+          inputPayload,
+          theologianId: body.theologianId,
+          isPrivate: true,
+          resultTypeId: resultType.id,
+          status: "pending",
+        })
+        .returning();
+
+      const [jobRow] = await tx
+        .insert(jobs)
+        .values({
+          type: body.toolType,
+          payload: { resultId: resultRow.id },
+        })
+        .returning();
+
+      await tx
+        .update(results)
+        .set({ jobId: jobRow.id })
+        .where(eq(results.id, resultRow.id));
+
+      return {
+        id: resultRow.id,
+        status: resultRow.status,
+        toolType: resultRow.toolType,
+        title: resultRow.title,
+        createdAt: resultRow.createdAt,
+      };
+    }
+
+    // Team-based tools (ask, poll, review)
     // Look up the team
     const [team] = await tx.select().from(teams).where(eq(teams.id, body.teamId));
     if (!team) {
@@ -198,9 +261,11 @@ app.get("/", async (c) => {
       createdAt: results.createdAt,
       completedAt: results.completedAt,
       teamName: teamSnapshots.name,
+      theologianName: theologians.name,
     })
     .from(results)
     .leftJoin(teamSnapshots, eq(results.teamSnapshotId, teamSnapshots.id))
+    .leftJoin(theologians, eq(results.theologianId, theologians.id))
     .where(and(eq(results.userId, userId), isNull(results.hiddenAt)))
     .orderBy(desc(results.createdAt));
 
@@ -230,9 +295,12 @@ app.get("/:id", async (c) => {
       completedAt: results.completedAt,
       teamName: teamSnapshots.name,
       teamMembers: teamSnapshots.members,
+      theologianName: theologians.name,
+      theologianSlug: theologians.slug,
     })
     .from(results)
     .leftJoin(teamSnapshots, eq(results.teamSnapshotId, teamSnapshots.id))
+    .leftJoin(theologians, eq(results.theologianId, theologians.id))
     .where(eq(results.id, resultId));
 
   if (!row) {
@@ -277,6 +345,7 @@ app.post("/:id/retry", async (c) => {
         title: original.title,
         inputPayload: original.inputPayload,
         teamSnapshotId: original.teamSnapshotId,
+        theologianId: original.theologianId,
         reviewFileId: original.reviewFileId,
         resultTypeId: original.resultTypeId,
         retriedFromId: original.id,

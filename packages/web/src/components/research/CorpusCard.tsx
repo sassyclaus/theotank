@@ -5,9 +5,10 @@ import type { Corpus } from "@/data/mock-research";
 
 interface CorpusCardProps {
   corpus: Corpus;
+  onSelect?: (corpus: Corpus) => void;
 }
 
-export function CorpusCard({ corpus }: CorpusCardProps) {
+export function CorpusCard({ corpus, onSelect }: CorpusCardProps) {
   const isAvailable = corpus.available;
 
   return (
@@ -55,6 +56,7 @@ export function CorpusCard({ corpus }: CorpusCardProps) {
           variant={isAvailable ? "research" : "outline"}
           className="w-full"
           disabled={!isAvailable}
+          onClick={isAvailable && onSelect ? () => onSelect(corpus) : undefined}
         >
           {corpus.cta}
         </Button>

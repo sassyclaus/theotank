@@ -213,27 +213,56 @@
   {
     "kind": "research",
     "version": 1,
-    "description": "Initial Research result type — single-theologian deep-dive with citations",
+    "description": "Research result type — RAG pipeline with claim verification and citation-grounded synthesis",
     "contentSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
-      "required": ["tool", "theologianName", "responseText", "citations"],
+      "required": ["tool", "question", "theologianName", "theologianSlug", "responseText", "citations", "metadata"],
       "properties": {
         "tool": { "const": "research" },
+        "question": { "type": "string" },
         "theologianName": { "type": "string" },
+        "theologianSlug": { "type": "string" },
         "responseText": { "type": "string" },
         "citations": {
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["id", "marker", "source", "originalText", "translation"],
+            "required": ["id", "marker", "claimText", "claimType", "confidence", "sources"],
             "properties": {
               "id": { "type": "string" },
               "marker": { "type": "string" },
-              "source": { "type": "string" },
-              "originalText": { "type": "string" },
-              "translation": { "type": "string" }
+              "claimText": { "type": "string" },
+              "claimType": {
+                "type": "string",
+                "enum": ["paraphrase", "quote", "inference"]
+              },
+              "confidence": {
+                "type": "string",
+                "enum": ["HIGH", "MEDIUM", "LOW"]
+              },
+              "sources": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["workTitle", "canonicalRef", "originalText", "translation"],
+                  "properties": {
+                    "workTitle": { "type": "string" },
+                    "canonicalRef": { "type": "string" },
+                    "originalText": { "type": "string" },
+                    "translation": { "type": "string" }
+                  }
+                }
+              }
             }
+          }
+        },
+        "metadata": {
+          "type": "object",
+          "properties": {
+            "anglesProcessed": { "type": "integer" },
+            "totalClaims": { "type": "integer" },
+            "evidenceItemsUsed": { "type": "integer" }
           }
         }
       }

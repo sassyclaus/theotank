@@ -57,6 +57,20 @@
       "when": 1772001182493,
       "tag": "0007_new_blue_marvel",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1772043670001,
+      "tag": "0008_complex_lightspeed",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1772130000000,
+      "tag": "0009_translation_embeddings",
+      "breakpoints": true
     }
   ]
 }
