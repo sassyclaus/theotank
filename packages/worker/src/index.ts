@@ -4,6 +4,7 @@ import { ConcurrencyPool } from "./pool";
 import { claimJob } from "./queue";
 import { processJob } from "./processors";
 import { closeDb } from "@theotank/rds/db";
+import { logger } from "./lib/logger";
 
 validateConfig();
 
@@ -30,14 +31,15 @@ async function pollLoop(): Promise<void> {
       if (pool.hasCapacity()) {
         const job = await claimJob();
         if (job) {
-          console.log(
-            `[${config.workerId}] Claimed job ${job.id} (type: ${job.type})`
+          logger.info(
+            { jobId: job.id, jobType: job.type, workerId: config.workerId },
+            "Job claimed",
           );
           pool.run(() => processJob(job));
         }
       }
     } catch (err) {
-      console.error("Poll error:", err);
+      logger.error({ err }, "Poll error");
     }
 
     await new Promise((r) => setTimeout(r, config.pollIntervalMs));
@@ -46,14 +48,17 @@ async function pollLoop(): Promise<void> {
 
 // ── Graceful shutdown ───────────────────────────────────────────────
 async function shutdown(signal: string): Promise<void> {
-  console.log(`\n[${config.workerId}] ${signal} received, shutting down...`);
+  logger.info({ signal, workerId: config.workerId }, "Shutdown signal received");
   running = false;
 
-  console.log(`[${config.workerId}] Draining ${pool.active} in-flight jobs...`);
+  logger.info(
+    { activeJobs: pool.active, workerId: config.workerId },
+    "Draining in-flight jobs",
+  );
   await pool.drain();
 
   await closeDb();
-  console.log(`[${config.workerId}] Shutdown complete.`);
+  logger.info({ workerId: config.workerId }, "Shutdown complete");
   process.exit(0);
 }
 
@@ -61,8 +66,13 @@ process.on("SIGINT", () => shutdown("SIGINT"));
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 
 // ── Start ───────────────────────────────────────────────────────────
-console.log(
-  `[${config.workerId}] Worker starting (poll: ${config.pollIntervalMs}ms, concurrency: ${config.maxConcurrency})`
+logger.info(
+  {
+    workerId: config.workerId,
+    pollIntervalMs: config.pollIntervalMs,
+    maxConcurrency: config.maxConcurrency,
+  },
+  "Worker starting",
 );
 pollLoop();
 

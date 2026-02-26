@@ -8,6 +8,7 @@ import {
 } from "@theotank/rds/schema";
 import { eq, and } from "drizzle-orm";
 import type { Job } from "@theotank/rds/schema";
+import type { Logger } from "../lib/logger";
 import { config } from "../config";
 import { logProgress } from "../progress";
 import { uploadJson } from "../s3";
@@ -71,8 +72,6 @@ import type {
 
 const openai = new OpenAI({ apiKey: config.openaiApiKey });
 
-const TAG = "[research]";
-
 interface ResearchAlgoConfig {
   defaultModels: {
     interpreter: { model: string; provider: string };
@@ -103,8 +102,9 @@ async function failBoth(
   resultId: string,
   jobId: string,
   message: string,
+  log: Logger,
 ): Promise<void> {
-  console.error(`${TAG} FAIL result=${resultId}: ${message}`);
+  log.error({ resultId }, `FAIL: ${message}`);
   const db = getDb();
   await db
     .update(results)
@@ -119,29 +119,48 @@ async function failBoth(
 async function llmChat(
   label: string,
   params: Parameters<typeof openai.chat.completions.create>[0],
+  log: Logger,
 ): Promise<OpenAI.Chat.Completions.ChatCompletion> {
   const t0 = performance.now();
-  console.log(`${TAG} [llm:chat] ${label} model=${params.model} ...`);
+  log.debug({ llmLabel: label, model: params.model }, "LLM chat starting");
   const response = await openai.chat.completions.create(params);
-  const ms = Math.round(performance.now() - t0);
+  const duration_ms = Math.round(performance.now() - t0);
   const usage = response.usage;
-  console.log(
-    `${TAG} [llm:chat] ${label} done ${ms}ms` +
-      (usage ? ` (prompt=${usage.prompt_tokens} completion=${usage.completion_tokens} total=${usage.total_tokens})` : ""),
+  log.info(
+    {
+      llmLabel: label,
+      model: params.model,
+      duration_ms,
+      ...(usage && {
+        promptTokens: usage.prompt_tokens,
+        completionTokens: usage.completion_tokens,
+        totalTokens: usage.total_tokens,
+      }),
+    },
+    "LLM chat completed",
   );
   return response;
 }
 
-async function embed(text: string, model: string, label?: string): Promise<number[]> {
+async function embed(
+  text: string,
+  model: string,
+  log: Logger,
+  label?: string,
+): Promise<number[]> {
   const t0 = performance.now();
-  const tag = label ? `embed:${label}` : "embed";
-  console.log(`${TAG} [${tag}] model=${model} input=${text.length} chars ...`);
+  log.debug({ embedLabel: label ?? "embed", model, inputChars: text.length }, "Embedding starting");
   const response = await openai.embeddings.create({ model, input: text });
-  const ms = Math.round(performance.now() - t0);
+  const duration_ms = Math.round(performance.now() - t0);
   const usage = response.usage;
-  console.log(
-    `${TAG} [${tag}] done ${ms}ms` +
-      (usage ? ` (tokens=${usage.prompt_tokens} total=${usage.total_tokens})` : ""),
+  log.debug(
+    {
+      embedLabel: label ?? "embed",
+      model,
+      duration_ms,
+      ...(usage && { promptTokens: usage.prompt_tokens, totalTokens: usage.total_tokens }),
+    },
+    "Embedding completed",
   );
   return response.data[0].embedding;
 }
@@ -174,11 +193,10 @@ function toRetrievedParagraph(
   };
 }
 
-export async function processResearch(job: Job): Promise<void> {
+export async function processResearch(job: Job, log: Logger): Promise<void> {
   const db = getDb();
   const payload = job.payload as ResearchJobPayload;
   const { resultId } = payload;
-  console.log(`${TAG} Starting result=${resultId} job=${job.id}`);
 
   // 1. Load result row
   const [result] = await db
@@ -186,6 +204,9 @@ export async function processResearch(job: Job): Promise<void> {
     .from(results)
     .where(eq(results.id, resultId));
   if (!result) throw new Error(`Result ${resultId} not found`);
+
+  log = log.child({ resultId, userId: result.userId });
+  log.info("Starting research processing");
 
   // 2. Load active algorithm version
   const [algoVersion] = await db
@@ -198,7 +219,7 @@ export async function processResearch(job: Job): Promise<void> {
       ),
     );
   if (!algoVersion) {
-    await failBoth(resultId, job.id, "No active algorithm version for research");
+    await failBoth(resultId, job.id, "No active algorithm version for research", log);
     return;
   }
 
@@ -217,7 +238,7 @@ export async function processResearch(job: Job): Promise<void> {
 
   // 4. Load theologian
   if (!result.theologianId) {
-    await failBoth(resultId, job.id, "No theologian linked to research result");
+    await failBoth(resultId, job.id, "No theologian linked to research result", log);
     return;
   }
 
@@ -226,27 +247,26 @@ export async function processResearch(job: Job): Promise<void> {
     .from(theologians)
     .where(eq(theologians.id, result.theologianId));
   if (!theologian) {
-    await failBoth(resultId, job.id, "Theologian not found");
+    await failBoth(resultId, job.id, "Theologian not found", log);
     return;
   }
 
   const question = (result.inputPayload as { question: string }).question;
-  console.log(`${TAG} Theologian=${theologian.name} question="${question.slice(0, 80)}..."`);
+  log.info({ theologian: theologian.name, question: question.slice(0, 80) }, "Research context loaded");
 
   // 5. Load edition IDs for this theologian
   const editionIds = await getEditionIds(theologian.id);
   if (editionIds.length === 0) {
-    await failBoth(resultId, job.id, `No ready editions found for ${theologian.name}`);
+    await failBoth(resultId, job.id, `No ready editions found for ${theologian.name}`, log);
     return;
   }
-  console.log(`${TAG} Found ${editionIds.length} edition(s)`);
+  log.info({ editionCount: editionIds.length }, "Editions loaded");
 
   let step = 0;
 
   try {
     // ── Stage 0.5: Interpretation ──────────────────────────────────
     await logProgress(resultId, step, "Interpreting your question...");
-    console.log(`${TAG} Stage 0.5: Interpreting question...`);
 
     const interpResponse = await llmChat("interpret", {
       model: algoConfig.defaultModels.interpreter.model,
@@ -263,11 +283,11 @@ export async function processResearch(job: Job): Promise<void> {
         { role: "user", content: buildInterpretUserPrompt(question) },
       ],
       response_format: { type: "json_schema", json_schema: interpretJsonSchema },
-    });
+    }, log);
 
     const interpContent = interpResponse.choices[0]?.message?.content;
     if (!interpContent) {
-      await failBoth(resultId, job.id, "Empty interpretation response");
+      await failBoth(resultId, job.id, "Empty interpretation response", log);
       return;
     }
 
@@ -285,7 +305,7 @@ export async function processResearch(job: Job): Promise<void> {
 
     // Auto-select all angles (up to maxAngles)
     const activeAngles = interpretation.angles.slice(0, rc.maxAngles);
-    console.log(`${TAG} Angles: ${activeAngles.map((a) => a.label).join(", ")}`);
+    log.info({ angles: activeAngles.map((a) => a.label) }, "Angles identified");
 
     step++;
     await logProgress(
@@ -296,7 +316,6 @@ export async function processResearch(job: Job): Promise<void> {
     );
 
     // ── Stage 1: Search Plan ───────────────────────────────────────
-    console.log(`${TAG} Stage 1: Generating search plan...`);
     const searchPlanResponse = await llmChat("search-plan", {
       model: algoConfig.defaultModels.search_planner.model,
       messages: [
@@ -320,11 +339,11 @@ export async function processResearch(job: Job): Promise<void> {
         },
       ],
       response_format: { type: "json_schema", json_schema: searchPlanJsonSchema },
-    });
+    }, log);
 
     const searchPlanContent = searchPlanResponse.choices[0]?.message?.content;
     if (!searchPlanContent) {
-      await failBoth(resultId, job.id, "Empty search plan response");
+      await failBoth(resultId, job.id, "Empty search plan response", log);
       return;
     }
 
@@ -343,14 +362,21 @@ export async function processResearch(job: Job): Promise<void> {
 
       step++;
       await logProgress(resultId, step, `Searching corpus: ${angle.label}...`);
-      console.log(`${TAG} Stage 2.${ai}: Searching for angle "${angle.label}"...`);
-      console.log(`${TAG}   Latin terms: ${anglePlan.latin_key_terms.join(", ")}`);
-      console.log(`${TAG}   English terms: ${anglePlan.english_terms.join(", ")}`);
+      log.info(
+        {
+          stage: `retrieval-${ai}`,
+          angle: angle.label,
+          latinTerms: anglePlan.latin_key_terms,
+          englishTerms: anglePlan.english_terms,
+        },
+        "Searching for angle",
+      );
 
       // Embed the angle interpretation for semantic search
       const angleEmbedding = await embed(
         `${angle.interpretation} ${angle.theologicalConcepts.join(" ")}`,
         algoConfig.embedding.model,
+        log,
         `angle-${ai}`,
       );
 
@@ -363,8 +389,16 @@ export async function processResearch(job: Job): Promise<void> {
         searchTranslationSemantic(editionIds, angleEmbedding, rc.topTranslationSemanticResults),
       ]);
 
-      console.log(
-        `${TAG}   Path results: A=${pathA.length} B=${pathB.length} C=${pathC.length} D=${pathD.length} E=${pathE.length}`,
+      log.debug(
+        {
+          stage: `retrieval-${ai}`,
+          pathA: pathA.length,
+          pathB: pathB.length,
+          pathC: pathC.length,
+          pathD: pathD.length,
+          pathE: pathE.length,
+        },
+        "Path results",
       );
 
       // Merge results into unified map, dedup by paragraphId, union score maps
@@ -401,7 +435,7 @@ export async function processResearch(job: Job): Promise<void> {
       mergeRows(pathE, "translation_semantic");
     }
 
-    console.log(`${TAG} Total unique paragraphs after merge: ${allParagraphs.size}`);
+    log.info({ uniqueParagraphs: allParagraphs.size }, "Retrieval merge complete");
 
     // ── Locus Diversity Selection ──────────────────────────────────
     const paragraphsArray = Array.from(allParagraphs.values());
@@ -448,8 +482,9 @@ export async function processResearch(job: Job): Promise<void> {
 
     // Count unique works
     const workNames = new Set(selectedLoci.map((l) => l.workTitle));
-    console.log(
-      `${TAG} Selected ${selectedLoci.length} loci from ${workNames.size} work(s): ${[...workNames].join(", ")}`,
+    log.info(
+      { selectedLoci: selectedLoci.length, works: [...workNames] },
+      "Locus selection complete",
     );
 
     step++;
@@ -469,8 +504,9 @@ export async function processResearch(job: Job): Promise<void> {
       l.paragraphs.map((p) => p.paragraphId),
     );
     const existingTranslations = await getTranslations(evidenceParagraphIds);
-    console.log(
-      `${TAG} Stage 7: ${evidenceParagraphIds.length} paragraphs, ${existingTranslations.size} cached translations`,
+    log.info(
+      { totalParagraphs: evidenceParagraphIds.length, cachedTranslations: existingTranslations.size },
+      "Translation stage starting",
     );
 
     // Build expanded evidence items with translations + context (parallelized)
@@ -494,7 +530,7 @@ export async function processResearch(job: Job): Promise<void> {
       const paraShort = para.paragraphId.slice(0, 8);
       const cached = existingTranslations.get(para.paragraphId);
       if (cached) {
-        console.log(`${TAG} [translate] para=${paraShort} cached (hasEmbed=${cached.hasEmbedding})`);
+        log.debug({ paragraphId: paraShort, cached: true, hasEmbedding: cached.hasEmbedding }, "Translation lookup");
         translation = cached.text;
         needsEmbedding = !cached.hasEmbedding;
         translationId = cached.translationId;
@@ -511,7 +547,7 @@ export async function processResearch(job: Job): Promise<void> {
               type: "json_schema",
               json_schema: translateJsonSchema,
             },
-          });
+          }, log);
           const transContent = transResponse.choices[0]?.message?.content;
           if (!transContent) {
             translation = "[Translation unavailable]";
@@ -521,7 +557,7 @@ export async function processResearch(job: Job): Promise<void> {
             translationsGenerated++;
           }
         } catch (err) {
-          console.error(`${TAG} Translation failed for paragraph=${paraShort}:`, err instanceof Error ? err.message : err);
+          log.error({ err, paragraphId: paraShort }, "Translation failed");
           translation = "[Translation unavailable]";
         }
 
@@ -530,6 +566,7 @@ export async function processResearch(job: Job): Promise<void> {
           const transEmbedding = await embed(
             translation,
             algoConfig.embedding.model,
+            log,
             `trans-store:${paraShort}`,
           );
           const sourceLabel = `llm_${algoConfig.defaultModels.translator.model}`;
@@ -552,6 +589,7 @@ export async function processResearch(job: Job): Promise<void> {
           const transEmbedding = await embed(
             translation,
             algoConfig.embedding.model,
+            log,
             `trans-backfill:${paraShort}`,
           );
           await updateTranslationEmbedding(
@@ -561,7 +599,7 @@ export async function processResearch(job: Job): Promise<void> {
           );
           embeddingsBackfilled++;
         } catch (err) {
-          console.error(`${TAG} Embedding backfill failed for translation=${translationId}:`, err instanceof Error ? err.message : err);
+          log.error({ err, translationId }, "Embedding backfill failed");
         }
       }
 
@@ -574,7 +612,10 @@ export async function processResearch(job: Job): Promise<void> {
       const batch = allParas.slice(i, i + TRANSLATION_CONCURRENCY);
       const batchResults = await Promise.all(batch.map(translateParagraph));
       translations.push(...batchResults);
-      console.log(`${TAG}   Translated ${Math.min(i + TRANSLATION_CONCURRENCY, allParas.length)}/${allParas.length} paragraphs`);
+      log.debug(
+        { translated: Math.min(i + TRANSLATION_CONCURRENCY, allParas.length), total: allParas.length },
+        "Translation batch progress",
+      );
     }
 
     // Fetch all neighbor paragraphs in parallel
@@ -602,14 +643,15 @@ export async function processResearch(job: Job): Promise<void> {
       },
     );
 
-    console.log(
-      `${TAG} Translation done: ${translationsGenerated} generated, ${embeddingsBackfilled} backfilled, ${expandedItems.length} items total`,
+    log.info(
+      { translationsGenerated, embeddingsBackfilled, totalItems: expandedItems.length },
+      "Translation stage complete",
     );
 
     // ── Module D2: Claim Extraction ────────────────────────────────
     step++;
     await logProgress(resultId, step, "Extracting claims from evidence...");
-    console.log(`${TAG} Module D2: Extracting claims from ${selectedLoci.length} loci...`);
+    log.info({ lociCount: selectedLoci.length }, "Claim extraction starting");
 
     const allClaims: Array<{
       claim: { claimText: string; claimType: "paraphrase" | "quote" | "inference"; citedParagraphIds: string[] };
@@ -645,7 +687,7 @@ export async function processResearch(job: Job): Promise<void> {
             type: "json_schema",
             json_schema: claimExtractionJsonSchema,
           },
-        });
+        }, log);
 
         const claimContent = claimResponse.choices[0]?.message?.content;
         if (!claimContent) continue;
@@ -662,16 +704,16 @@ export async function processResearch(job: Job): Promise<void> {
           });
         }
       } catch (err) {
-        console.error(`${TAG} Claim extraction failed for locus=${locus.canonicalRef}:`, err instanceof Error ? err.message : err);
+        log.error({ err, locusRef: locus.canonicalRef }, "Claim extraction failed for locus");
       }
     }
 
-    console.log(`${TAG} Extracted ${allClaims.length} raw claims`);
+    log.info({ rawClaims: allClaims.length }, "Claims extracted");
 
     // ── Module D3: Claim Verification ──────────────────────────────
     step++;
     await logProgress(resultId, step, "Verifying claims against sources...");
-    console.log(`${TAG} Module D3: Verifying ${allClaims.length} claims...`);
+    log.info({ claimCount: allClaims.length }, "Claim verification starting");
 
     const verifiedClaims: VerifiedClaim[] = [];
 
@@ -703,7 +745,7 @@ export async function processResearch(job: Job): Promise<void> {
               type: "json_schema",
               json_schema: verificationJsonSchema,
             },
-          });
+          }, log);
 
           const verifyContent = verifyResponse.choices[0]?.message?.content;
           if (!verifyContent) continue;
@@ -716,7 +758,7 @@ export async function processResearch(job: Job): Promise<void> {
             paragraphId,
           });
         } catch (err) {
-          console.error(`${TAG} Verification failed for paragraph=${paragraphId}:`, err instanceof Error ? err.message : err);
+          log.error({ err, paragraphId }, "Verification failed");
         }
       }
 
@@ -744,8 +786,12 @@ export async function processResearch(job: Job): Promise<void> {
       });
     }
 
-    console.log(
-      `${TAG} Verification done: ${verifiedClaims.length} verified (${verifiedClaims.filter((c) => c.confidence === "HIGH").length} HIGH, ${verifiedClaims.filter((c) => c.confidence === "MEDIUM").length} MEDIUM, ${verifiedClaims.filter((c) => c.confidence === "LOW").length} LOW)`,
+    const highCount = verifiedClaims.filter((c) => c.confidence === "HIGH").length;
+    const mediumCount = verifiedClaims.filter((c) => c.confidence === "MEDIUM").length;
+    const lowCount = verifiedClaims.filter((c) => c.confidence === "LOW").length;
+    log.info(
+      { verified: verifiedClaims.length, high: highCount, medium: mediumCount, low: lowCount },
+      "Claim verification complete",
     );
 
     if (verifiedClaims.length === 0) {
@@ -753,6 +799,7 @@ export async function processResearch(job: Job): Promise<void> {
         resultId,
         job.id,
         "No verified claims could be extracted from the corpus",
+        log,
       );
       return;
     }
@@ -764,7 +811,6 @@ export async function processResearch(job: Job): Promise<void> {
       step,
       "Writing citation-grounded response...",
     );
-    console.log(`${TAG} Module D4: Synthesizing with ${verifiedClaims.length} claims...`);
 
     const synthResponse = await llmChat("synthesis", {
       model: algoConfig.defaultModels.synthesizer.model,
@@ -790,17 +836,18 @@ export async function processResearch(job: Job): Promise<void> {
         type: "json_schema",
         json_schema: synthesisJsonSchema,
       },
-    });
+    }, log);
 
     const synthContent = synthResponse.choices[0]?.message?.content;
     if (!synthContent) {
-      await failBoth(resultId, job.id, "Empty synthesis response");
+      await failBoth(resultId, job.id, "Empty synthesis response", log);
       return;
     }
 
     const synthesis: LLMSynthesisResponse = JSON.parse(synthContent);
-    console.log(
-      `${TAG} Synthesis done: ${synthesis.response_text.length} chars, ${synthesis.citation_plan.length} citations`,
+    log.info(
+      { responseChars: synthesis.response_text.length, citationCount: synthesis.citation_plan.length },
+      "Synthesis complete",
     );
 
     // ── Build Citations Array ──────────────────────────────────────
@@ -863,7 +910,7 @@ export async function processResearch(job: Job): Promise<void> {
     const contentKey = `results/research/${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, "0")}/${resultId}.json`;
 
     await uploadJson(contentKey, researchContent);
-    console.log(`${TAG} Uploaded to S3: ${contentKey}`);
+    log.info({ contentKey }, "Uploaded to S3");
 
     // ── Mark Completed ─────────────────────────────────────────────
     const previewExcerpt =
@@ -894,11 +941,11 @@ export async function processResearch(job: Job): Promise<void> {
       })
       .where(eq(results.id, resultId));
 
-    console.log(`${TAG} DONE result=${resultId} citations=${citations.length}`);
+    log.info({ citationCount: citations.length }, "Research processing complete");
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "Unknown research processing error";
-    console.error(`${TAG} Unhandled error:`, err);
-    await failBoth(resultId, job.id, message);
+    log.error({ err }, "Unhandled research error");
+    await failBoth(resultId, job.id, message, log);
   }
 }

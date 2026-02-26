@@ -80,23 +80,135 @@ app.post("/", async (c) => {
 
   const db = getDb();
 
-  const result = await db.transaction(async (tx) => {
-    // Look up active result type
-    const [resultType] = await tx
-      .select()
-      .from(resultTypes)
-      .where(
-        and(eq(resultTypes.kind, body.toolType), eq(resultTypes.isActive, true))
-      );
-    if (!resultType) {
-      throw new Error(`No active result type for ${body.toolType}`);
-    }
+  const log = (c.get("log" as never) as import("../lib/logger").Logger) || undefined;
 
-    // Research: no team snapshot needed
-    if (body.toolType === "research") {
-      const inputPayload = { question: body.question };
-      const title = body.question;
+  let result;
+  try {
+    result = await db.transaction(async (tx) => {
+      // Look up active result type
+      const [resultType] = await tx
+        .select()
+        .from(resultTypes)
+        .where(
+          and(eq(resultTypes.kind, body.toolType), eq(resultTypes.isActive, true))
+        );
+      if (!resultType) {
+        throw new Error(`No active result type for ${body.toolType}`);
+      }
 
+      // Research: no team snapshot needed
+      if (body.toolType === "research") {
+        const inputPayload = { question: body.question };
+        const title = body.question;
+
+        const [resultRow] = await tx
+          .insert(results)
+          .values({
+            userId,
+            toolType: body.toolType,
+            title,
+            inputPayload,
+            theologianId: body.theologianId,
+            isPrivate: true,
+            resultTypeId: resultType.id,
+            status: "pending",
+          })
+          .returning();
+
+        const [jobRow] = await tx
+          .insert(jobs)
+          .values({
+            type: body.toolType,
+            payload: { resultId: resultRow.id },
+          })
+          .returning();
+
+        await tx
+          .update(results)
+          .set({ jobId: jobRow.id })
+          .where(eq(results.id, resultRow.id));
+
+        return {
+          id: resultRow.id,
+          jobId: jobRow.id,
+          status: resultRow.status,
+          toolType: resultRow.toolType,
+          title: resultRow.title,
+          createdAt: resultRow.createdAt,
+        };
+      }
+
+      // Team-based tools (ask, poll, review)
+      // Look up the team
+      const [team] = await tx.select().from(teams).where(eq(teams.id, body.teamId));
+      if (!team) {
+        throw new Error("Team not found");
+      }
+
+      // Create/reuse team snapshot for current version
+      await tx
+        .insert(teamSnapshots)
+        .values({
+          teamId: team.id,
+          version: team.version,
+          name: team.name,
+          description: team.description,
+          members: await (async () => {
+            const memberRows = await tx
+              .select({
+                theologianId: theologians.id,
+                name: theologians.name,
+                initials: theologians.initials,
+                tradition: theologians.tradition,
+              })
+              .from(teamMemberships)
+              .innerJoin(
+                theologians,
+                eq(teamMemberships.theologianId, theologians.id)
+              )
+              .where(eq(teamMemberships.teamId, team.id))
+              .orderBy(asc(theologians.name));
+            return memberRows;
+          })(),
+        })
+        .onConflictDoNothing();
+
+      // Look up the snapshot (may have been pre-existing)
+      const [snapshot] = await tx
+        .select()
+        .from(teamSnapshots)
+        .where(
+          and(
+            eq(teamSnapshots.teamId, team.id),
+            eq(teamSnapshots.version, team.version)
+          )
+        );
+
+      // Build input payload and title based on tool type
+      let inputPayload: Record<string, unknown>;
+      let title: string;
+
+      if (body.toolType === "review") {
+        inputPayload = {
+          reviewFileId: body.reviewFileId,
+          focusPrompt: body.focusPrompt ?? null,
+        };
+        // Use the review file label as the result title
+        const db2 = getDb();
+        const [file] = await db2
+          .select({ label: reviewFiles.label })
+          .from(reviewFiles)
+          .where(eq(reviewFiles.id, body.reviewFileId));
+        title = `Review: ${file?.label ?? "Untitled"}`;
+      } else if (body.toolType === "poll") {
+        inputPayload = { question: body.question, options: body.options };
+        title = body.question;
+      } else {
+        inputPayload = { question: body.question };
+        title = body.question;
+      }
+
+      // Insert result row
       const [resultRow] = await tx
         .insert(results)
         .values({
@@ -104,13 +216,14 @@ app.post("/", async (c) => {
           toolType: body.toolType,
           title,
           inputPayload,
-          theologianId: body.theologianId,
-          isPrivate: true,
+          teamSnapshotId: snapshot.id,
+          reviewFileId: body.toolType === "review" ? body.reviewFileId : undefined,
           resultTypeId: resultType.id,
           status: "pending",
         })
         .returning();
 
+      // Insert job row
       const [jobRow] = await tx
         .insert(jobs)
         .values({
@@ -119,6 +232,7 @@ app.post("/", async (c) => {
         })
         .returning();
 
+      // Update result with jobId
       await tx
         .update(results)
         .set({ jobId: jobRow.id })
@@ -126,121 +240,22 @@ app.post("/", async (c) => {
 
       return {
         id: resultRow.id,
+        jobId: jobRow.id,
         status: resultRow.status,
         toolType: resultRow.toolType,
         title: resultRow.title,
         createdAt: resultRow.createdAt,
       };
-    }
+    });
+  } catch (err) {
+    log?.error({ err, userId, toolType: body.toolType }, "Result creation failed");
+    throw err;
+  }
 
-    // Team-based tools (ask, poll, review)
-    // Look up the team
-    const [team] = await tx.select().from(teams).where(eq(teams.id, body.teamId));
-    if (!team) {
-      throw new Error("Team not found");
-    }
-
-    // Create/reuse team snapshot for current version
-    await tx
-      .insert(teamSnapshots)
-      .values({
-        teamId: team.id,
-        version: team.version,
-        name: team.name,
-        description: team.description,
-        members: await (async () => {
-          const memberRows = await tx
-            .select({
-              theologianId: theologians.id,
-              name: theologians.name,
-              initials: theologians.initials,
-              tradition: theologians.tradition,
-            })
-            .from(teamMemberships)
-            .innerJoin(
-              theologians,
-              eq(teamMemberships.theologianId, theologians.id)
-            )
-            .where(eq(teamMemberships.teamId, team.id))
-            .orderBy(asc(theologians.name));
-          return memberRows;
-        })(),
-      })
-      .onConflictDoNothing();
-
-    // Look up the snapshot (may have been pre-existing)
-    const [snapshot] = await tx
-      .select()
-      .from(teamSnapshots)
-      .where(
-        and(
-          eq(teamSnapshots.teamId, team.id),
-          eq(teamSnapshots.version, team.version)
-        )
-      );
-
-    // Build input payload and title based on tool type
-    let inputPayload: Record<string, unknown>;
-    let title: string;
-
-    if (body.toolType === "review") {
-      inputPayload = {
-        reviewFileId: body.reviewFileId,
-        focusPrompt: body.focusPrompt ?? null,
-      };
-      // Use the review file label as the result title
-      const db2 = getDb();
-      const [file] = await db2
-        .select({ label: reviewFiles.label })
-        .from(reviewFiles)
-        .where(eq(reviewFiles.id, body.reviewFileId));
-      title = `Review: ${file?.label ?? "Untitled"}`;
-    } else if (body.toolType === "poll") {
-      inputPayload = { question: body.question, options: body.options };
-      title = body.question;
-    } else {
-      inputPayload = { question: body.question };
-      title = body.question;
-    }
-
-    // Insert result row
-    const [resultRow] = await tx
-      .insert(results)
-      .values({
-        userId,
-        toolType: body.toolType,
-        title,
-        inputPayload,
-        teamSnapshotId: snapshot.id,
-        reviewFileId: body.toolType === "review" ? body.reviewFileId : undefined,
-        resultTypeId: resultType.id,
-        status: "pending",
-      })
-      .returning();
-
-    // Insert job row
-    const [jobRow] = await tx
-      .insert(jobs)
-      .values({
-        type: body.toolType,
-        payload: { resultId: resultRow.id },
-      })
-      .returning();
-
-    // Update result with jobId
-    await tx
-      .update(results)
-      .set({ jobId: jobRow.id })
-      .where(eq(results.id, resultRow.id));
-
-    return {
-      id: resultRow.id,
-      status: resultRow.status,
-      toolType: resultRow.toolType,
-      title: resultRow.title,
-      createdAt: resultRow.createdAt,
-    };
-  });
+  log?.info(
+    { resultId: result.id, jobId: result.jobId, toolType: result.toolType, userId },
+    "Result created",
+  );
 
   return c.json(result, 201);
 });

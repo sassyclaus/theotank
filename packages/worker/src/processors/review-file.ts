@@ -2,6 +2,7 @@ import { getDb } from "@theotank/rds/db";
 import { reviewFiles } from "@theotank/rds/schema";
 import { eq } from "drizzle-orm";
 import type { Job } from "@theotank/rds/schema";
+import type { Logger } from "../lib/logger";
 import { downloadBuffer, uploadText } from "../s3";
 import { extractAudio, splitIfNeeded, cleanupChunks } from "../lib/audio-chunker";
 import { transcribeChunks } from "../lib/whisper";
@@ -21,10 +22,12 @@ async function failFile(fileId: string, message: string): Promise<void> {
     .where(eq(reviewFiles.id, fileId));
 }
 
-export async function processReviewFile(job: Job): Promise<void> {
+export async function processReviewFile(job: Job, log: Logger): Promise<void> {
   const db = getDb();
   const payload = job.payload as ReviewFileJobPayload;
   const { reviewFileId } = payload;
+
+  log = log.child({ reviewFileId });
 
   // Load review file row
   const [file] = await db
@@ -35,6 +38,8 @@ export async function processReviewFile(job: Job): Promise<void> {
   if (!file) {
     throw new Error(`Review file ${reviewFileId} not found`);
   }
+
+  log.info({ contentType: file.contentType, fileName: file.fileName }, "Processing review file");
 
   // Mark as processing
   await db
@@ -56,11 +61,13 @@ export async function processReviewFile(job: Job): Promise<void> {
     );
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Unknown extraction error";
+    log.error({ err }, "Text extraction failed");
     await failFile(reviewFileId, msg);
     throw err;
   }
 
   if (!extractedText || extractedText.trim().length === 0) {
+    log.warn("No text could be extracted from file");
     await failFile(reviewFileId, "No text could be extracted from the file");
     return;
   }
@@ -79,6 +86,8 @@ export async function processReviewFile(job: Job): Promise<void> {
       updatedAt: new Date(),
     })
     .where(eq(reviewFiles.id, reviewFileId));
+
+  log.info({ charCount: extractedText.length }, "Review file ready");
 }
 
 async function extractTextByType(

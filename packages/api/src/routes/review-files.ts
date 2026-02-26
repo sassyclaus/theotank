@@ -167,8 +167,9 @@ app.delete("/:id", async (c) => {
   try {
     if (file.fileKey) await deleteObject(file.fileKey);
     if (file.textStorageKey) await deleteObject(file.textStorageKey);
-  } catch {
-    // S3 cleanup is best-effort
+  } catch (err) {
+    const { logger } = await import("../lib/logger");
+    logger.warn({ err, fileId, keys: [file.fileKey, file.textStorageKey] }, "S3 cleanup failed for review file deletion");
   }
 
   await db.delete(reviewFiles).where(eq(reviewFiles.id, fileId));

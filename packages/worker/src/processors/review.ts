@@ -10,6 +10,7 @@ import {
 } from "@theotank/rds/schema";
 import { eq, and } from "drizzle-orm";
 import type { Job } from "@theotank/rds/schema";
+import type { Logger } from "../lib/logger";
 import { config } from "../config";
 import { logProgress } from "../progress";
 import { downloadBuffer, uploadJson } from "../s3";
@@ -48,7 +49,7 @@ async function failBoth(
     .where(eq(jobs.id, jobId));
 }
 
-export async function processReview(job: Job): Promise<void> {
+export async function processReview(job: Job, log: Logger): Promise<void> {
   const db = getDb();
   const payload = job.payload as ReviewJobPayload;
   const { resultId } = payload;
@@ -61,6 +62,8 @@ export async function processReview(job: Job): Promise<void> {
   if (!result) {
     throw new Error(`Result ${resultId} not found`);
   }
+
+  log = log.child({ resultId, userId: result.userId });
 
   // 2. Load active algorithm version
   const [algoVersion] = await db
@@ -169,6 +172,7 @@ export async function processReview(job: Job): Promise<void> {
     );
 
     try {
+      const t0 = performance.now();
       const response = await openai.chat.completions.create({
         model: reviewModel,
         messages: [
@@ -196,6 +200,19 @@ export async function processReview(job: Job): Promise<void> {
           json_schema: reviewJsonSchema,
         },
       });
+
+      const duration_ms = Math.round(performance.now() - t0);
+      const usage = response.usage;
+      log.info(
+        {
+          stage: "review",
+          theologian: t.name,
+          model: reviewModel,
+          duration_ms,
+          ...(usage && { promptTokens: usage.prompt_tokens, completionTokens: usage.completion_tokens, totalTokens: usage.total_tokens }),
+        },
+        "LLM review completed",
+      );
 
       const content = response.choices[0]?.message?.content;
       if (!content) {
@@ -244,6 +261,7 @@ export async function processReview(job: Job): Promise<void> {
 
   let synthesis: LLMReviewSynthesisResponse;
   try {
+    const t0 = performance.now();
     const response = await openai.chat.completions.create({
       model: synthesisModel,
       messages: [
@@ -264,6 +282,18 @@ export async function processReview(job: Job): Promise<void> {
         json_schema: reviewSynthesisJsonSchema,
       },
     });
+
+    const duration_ms = Math.round(performance.now() - t0);
+    const usage = response.usage;
+    log.info(
+      {
+        stage: "synthesis",
+        model: synthesisModel,
+        duration_ms,
+        ...(usage && { promptTokens: usage.prompt_tokens, completionTokens: usage.completion_tokens, totalTokens: usage.total_tokens }),
+      },
+      "LLM review synthesis completed",
+    );
 
     const content = response.choices[0]?.message?.content;
     if (!content) {

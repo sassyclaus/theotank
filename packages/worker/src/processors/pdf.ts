@@ -2,6 +2,7 @@ import { getDb } from "@theotank/rds/db";
 import { results, teamSnapshots, theologians } from "@theotank/rds/schema";
 import { eq } from "drizzle-orm";
 import type { Job } from "@theotank/rds/schema";
+import type { Logger } from "../lib/logger";
 import { downloadBuffer, uploadBuffer } from "../s3";
 import { renderPdf } from "../lib/pdf-renderer";
 
@@ -9,10 +10,12 @@ interface PdfJobPayload {
   resultId: string;
 }
 
-export async function processPdf(job: Job): Promise<void> {
+export async function processPdf(job: Job, log: Logger): Promise<void> {
   const db = getDb();
   const payload = job.payload as PdfJobPayload;
   const { resultId } = payload;
+
+  log = log.child({ resultId });
 
   // 1. Load result
   const [result] = await db
@@ -73,5 +76,5 @@ export async function processPdf(job: Job): Promise<void> {
     .set({ pdfKey, updatedAt: new Date() })
     .where(eq(results.id, resultId));
 
-  console.log(`PDF generated for result ${resultId}: ${pdfKey} (${pdfBuffer.length} bytes)`);
+  log.info({ pdfKey, sizeBytes: pdfBuffer.length }, "PDF generated");
 }

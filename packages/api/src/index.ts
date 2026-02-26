@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { logger } from "hono/logger";
+import { logger } from "./lib/logger";
+import { requestLogger } from "./middleware/request-logger";
 import { clerkAuth } from "./middleware/auth";
 import { adminAuth } from "./middleware/admin-auth";
 import theologians from "./routes/theologians";
@@ -11,8 +12,8 @@ import admin from "./routes/admin";
 
 const app = new Hono();
 
-// Request/response logging
-app.use("*", logger());
+// Structured request/response logging
+app.use("*", requestLogger);
 
 // CORS — allow Vite dev server
 app.use(
@@ -23,6 +24,13 @@ app.use(
     allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   }),
 );
+
+// Global error handler
+app.onError((err, c) => {
+  const log = (c.get("log" as never) as typeof logger) || logger;
+  log.error({ err, method: c.req.method, path: c.req.path }, "Unhandled error");
+  return c.json({ error: "Internal server error" }, 500);
+});
 
 // Health check (unauthenticated)
 app.get("/health", (c) => c.json({ ok: true }));
@@ -37,7 +45,7 @@ app.route("/api/results", results);
 app.route("/api/review-files", reviewFilesRoute);
 
 const port = Number(process.env.PORT) || 3001;
-console.log(`API server listening on :${port}`);
+logger.info({ port }, "API server listening");
 
 export default {
   port,

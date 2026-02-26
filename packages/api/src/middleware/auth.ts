@@ -1,5 +1,6 @@
 import { createMiddleware } from "hono/factory";
 import { verifyToken } from "@clerk/backend";
+import { logger } from "../lib/logger";
 
 type AuthEnv = {
   Variables: {
@@ -30,7 +31,9 @@ export const clerkAuth = createMiddleware<AuthEnv>(async (c, next) => {
     });
     c.set("userId", payload.sub);
     await next();
-  } catch {
+  } catch (err) {
+    const log = (c.get("log" as never) as typeof logger) || logger;
+    log.warn({ err, method: c.req.method, path: c.req.path }, "Token verification failed");
     return c.json({ error: "Invalid token" }, 401);
   }
 });

@@ -9,6 +9,7 @@ import {
 } from "@theotank/rds/schema";
 import { eq, and } from "drizzle-orm";
 import type { Job } from "@theotank/rds/schema";
+import type { Logger } from "../lib/logger";
 import { config } from "../config";
 import { logProgress } from "../progress";
 import { uploadJson } from "../s3";
@@ -53,7 +54,7 @@ async function failBoth(
     .where(eq(jobs.id, jobId));
 }
 
-export async function processAsk(job: Job): Promise<void> {
+export async function processAsk(job: Job, log: Logger): Promise<void> {
   const db = getDb();
   const payload = job.payload as AskJobPayload;
   const { resultId } = payload;
@@ -66,6 +67,8 @@ export async function processAsk(job: Job): Promise<void> {
   if (!result) {
     throw new Error(`Result ${resultId} not found`);
   }
+
+  log = log.child({ resultId, userId: result.userId });
 
   // 2. Load active algorithm version
   const [algoVersion] = await db
@@ -158,6 +161,7 @@ export async function processAsk(job: Job): Promise<void> {
     );
 
     try {
+      const t0 = performance.now();
       const response = await openai.chat.completions.create({
         model: perspectiveModel,
         messages: [
@@ -179,6 +183,19 @@ export async function processAsk(job: Job): Promise<void> {
           json_schema: perspectiveJsonSchema,
         },
       });
+
+      const duration_ms = Math.round(performance.now() - t0);
+      const usage = response.usage;
+      log.info(
+        {
+          stage: "perspective",
+          theologian: t.name,
+          model: perspectiveModel,
+          duration_ms,
+          ...(usage && { promptTokens: usage.prompt_tokens, completionTokens: usage.completion_tokens, totalTokens: usage.total_tokens }),
+        },
+        "LLM perspective completed",
+      );
 
       const content = response.choices[0]?.message?.content;
       if (!content) {
@@ -226,6 +243,7 @@ export async function processAsk(job: Job): Promise<void> {
 
   let synthesis: LLMSynthesisResponse;
   try {
+    const t0 = performance.now();
     const response = await openai.chat.completions.create({
       model: synthesisModel,
       messages: [
@@ -240,6 +258,18 @@ export async function processAsk(job: Job): Promise<void> {
         json_schema: synthesisJsonSchema,
       },
     });
+
+    const duration_ms = Math.round(performance.now() - t0);
+    const usage = response.usage;
+    log.info(
+      {
+        stage: "synthesis",
+        model: synthesisModel,
+        duration_ms,
+        ...(usage && { promptTokens: usage.prompt_tokens, completionTokens: usage.completion_tokens, totalTokens: usage.total_tokens }),
+      },
+      "LLM synthesis completed",
+    );
 
     const content = response.choices[0]?.message?.content;
     if (!content) {

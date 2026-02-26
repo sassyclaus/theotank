@@ -9,6 +9,7 @@ import {
 } from "@theotank/rds/schema";
 import { eq, and } from "drizzle-orm";
 import type { Job } from "@theotank/rds/schema";
+import type { Logger } from "../lib/logger";
 import { config } from "../config";
 import { logProgress } from "../progress";
 import { uploadJson } from "../s3";
@@ -65,7 +66,7 @@ function birthYearToEra(born: number): Era {
 
 // ── Main processor ─────────────────────────────────────────────────
 
-export async function processPoll(job: Job): Promise<void> {
+export async function processPoll(job: Job, log: Logger): Promise<void> {
   const db = getDb();
   const payload = job.payload as PollJobPayload;
   const { resultId } = payload;
@@ -78,6 +79,8 @@ export async function processPoll(job: Job): Promise<void> {
   if (!result) {
     throw new Error(`Result ${resultId} not found`);
   }
+
+  log = log.child({ resultId, userId: result.userId });
 
   // 2. Load active algorithm version
   const [algoVersion] = await db
@@ -195,6 +198,7 @@ export async function processPoll(job: Job): Promise<void> {
     // ── Pass 1: Recall ──────────────────────────────────────────
     let recalledPosition: string;
     try {
+      const t0 = performance.now();
       const response = await openai.chat.completions.create({
         model: recallModel,
         messages: [
@@ -202,6 +206,9 @@ export async function processPoll(job: Job): Promise<void> {
           { role: "user", content: buildRecallPrompt(t.name, question) },
         ],
       });
+
+      const duration_ms = Math.round(performance.now() - t0);
+      log.debug({ stage: "recall", theologian: t.name, model: recallModel, duration_ms }, "LLM recall completed");
 
       const content = response.choices[0]?.message?.content;
       if (!content) {
@@ -265,6 +272,7 @@ export async function processPoll(job: Job): Promise<void> {
     const critiqueWarning = buildCritiqueWarning(critiqueStrength);
 
     try {
+      const t0 = performance.now();
       const response = await openai.chat.completions.create({
         model: selectModel,
         messages: [
@@ -286,6 +294,9 @@ export async function processPoll(job: Job): Promise<void> {
           json_schema: pollSelectJsonSchema,
         },
       });
+
+      const duration_ms = Math.round(performance.now() - t0);
+      log.debug({ stage: "select", theologian: t.name, model: selectModel, duration_ms }, "LLM select completed");
 
       const content = response.choices[0]?.message?.content;
       if (!content) {
@@ -344,6 +355,11 @@ export async function processPoll(job: Job): Promise<void> {
     );
     return;
   }
+
+  log.info(
+    { successful: successful.length, errors: errors.length, total: validTheologians.length },
+    "Theologian voting complete",
+  );
 
   // 7. Compute summary prompt context (counts + era breakdown)
   const totalPolled = successful.length;
@@ -406,6 +422,7 @@ export async function processPoll(job: Job): Promise<void> {
 
   let summary: string;
   try {
+    const t0 = performance.now();
     const response = await openai.chat.completions.create({
       model: algoConfig.defaultModels.select.model,
       messages: [
@@ -435,6 +452,18 @@ export async function processPoll(job: Job): Promise<void> {
         json_schema: summaryJsonSchema,
       },
     });
+
+    const duration_ms = Math.round(performance.now() - t0);
+    const usage = response.usage;
+    log.info(
+      {
+        stage: "summary",
+        model: algoConfig.defaultModels.select.model,
+        duration_ms,
+        ...(usage && { promptTokens: usage.prompt_tokens, completionTokens: usage.completion_tokens, totalTokens: usage.total_tokens }),
+      },
+      "LLM summary completed",
+    );
 
     const content = response.choices[0]?.message?.content;
     if (!content) throw new Error("Empty summary response");
