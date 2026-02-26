@@ -15,6 +15,7 @@ export interface ResultSummary {
   status: "pending" | "processing" | "completed" | "failed";
   previewData: unknown;
   previewExcerpt: string | null;
+  pdfKey: string | null;
   createdAt: string;
   completedAt: string | null;
   teamName: string | null;
@@ -33,6 +34,7 @@ export interface ResultDetail {
   previewData: unknown;
   previewExcerpt: string | null;
   contentKey: string | null;
+  pdfKey: string | null;
   models: unknown;
   errorMessage: string | null;
   createdAt: string;
@@ -147,6 +149,17 @@ export interface ResearchCitationItem {
   confidence: "HIGH" | "MEDIUM" | "LOW";
   sources: ResearchCitationSource[];
 }
+
+// ── PDF Status ──────────────────────────────────────────────────────
+
+export interface PdfStatusResponse {
+  status: "not_started" | "pending" | "processing" | "completed" | "failed";
+  pdfKey?: string;
+  pdfJobId?: string;
+  errorMessage?: string;
+}
+
+// ── Research Content (from GET /api/results/:id/content) ────────────
 
 export interface ResearchContentResponse {
   tool: "research";

@@ -1,5 +1,6 @@
 import { Link, useNavigate } from "react-router";
-import { ArrowRight, FileText, Share2, RotateCcw } from "lucide-react";
+import { ArrowRight, FileText, Share2, RotateCcw, Loader2 } from "lucide-react";
+import { downloadPdf } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { TOOL_LABELS, TOOL_COLORS } from "@/data/mock-library";
@@ -104,7 +105,14 @@ export function LibraryResultCard({ item, onRetry }: LibraryResultCardProps) {
           </Link>
           <button
             className="flex items-center gap-1 text-xs text-text-secondary hover:text-text-primary"
-            onClick={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (item.pdfKey) {
+                downloadPdf(item.id);
+              } else {
+                navigate(`/library/${item.id}/pdf`);
+              }
+            }}
           >
             <FileText className="h-3 w-3" /> PDF
           </button>

@@ -71,6 +71,13 @@
       "when": 1772130000000,
       "tag": "0009_translation_embeddings",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1772123692071,
+      "tag": "0010_blue_retro_girl",
+      "breakpoints": true
     }
   ]
 }

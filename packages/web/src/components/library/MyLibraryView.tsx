@@ -46,6 +46,7 @@ function mapToLibraryItem(r: ResultSummary): MyLibraryItem {
     }),
     status: mapStatus(r.status),
     preview: mapPreview(r),
+    pdfKey: r.pdfKey,
   };
 }
 

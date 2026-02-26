@@ -111,7 +111,7 @@ export default function Result() {
 
         return (
           <div className="mx-auto max-w-4xl px-4 py-12 lg:px-8">
-            <ReportHeader result={mapped} />
+            <ReportHeader result={mapped} resultId={apiResult.id} pdfKey={apiResult.pdfKey} />
             <PollResultBody result={mapped} />
           </div>
         );
@@ -138,7 +138,7 @@ export default function Result() {
 
         return (
           <div className="mx-auto max-w-4xl px-4 py-12 lg:px-8">
-            <ReportHeader result={mapped} />
+            <ReportHeader result={mapped} resultId={apiResult.id} pdfKey={apiResult.pdfKey} />
             <ReviewResultBody result={mapped} />
           </div>
         );
@@ -165,7 +165,7 @@ export default function Result() {
 
         return (
           <div className="mx-auto max-w-4xl px-4 py-12 lg:px-8">
-            <ReportHeader result={mapped} />
+            <ReportHeader result={mapped} resultId={apiResult.id} pdfKey={apiResult.pdfKey} />
             <ResearchResultBody content={researchContent} />
           </div>
         );
@@ -188,7 +188,7 @@ export default function Result() {
 
       return (
         <div className="mx-auto max-w-4xl px-4 py-12 lg:px-8">
-          <ReportHeader result={mapped} />
+          <ReportHeader result={mapped} resultId={apiResult.id} pdfKey={apiResult.pdfKey} />
           <AskResultBody result={mapped} />
         </div>
       );

@@ -12,7 +12,7 @@ import {
   reviewFiles,
 } from "@theotank/rds/schema";
 import { eq, and, desc, asc, isNull, sql } from "drizzle-orm";
-import { getObject } from "../lib/s3";
+import { getObject, presignGetUrl } from "../lib/s3";
 
 const app = new Hono();
 
@@ -258,6 +258,7 @@ app.get("/", async (c) => {
       status: results.status,
       previewData: results.previewData,
       previewExcerpt: results.previewExcerpt,
+      pdfKey: results.pdfKey,
       createdAt: results.createdAt,
       completedAt: results.completedAt,
       teamName: teamSnapshots.name,
@@ -289,6 +290,7 @@ app.get("/:id", async (c) => {
       previewData: results.previewData,
       previewExcerpt: results.previewExcerpt,
       contentKey: results.contentKey,
+      pdfKey: results.pdfKey,
       models: results.models,
       errorMessage: results.errorMessage,
       createdAt: results.createdAt,
@@ -413,6 +415,143 @@ app.get("/:id/content", async (c) => {
 
   const content = await getObject(row.contentKey);
   return c.json(JSON.parse(content));
+});
+
+// POST /api/results/:id/pdf — create PDF generation job (idempotent)
+app.post("/:id/pdf", async (c) => {
+  const userId = c.get("userId" as never) as string;
+  const resultId = c.req.param("id");
+  const db = getDb();
+
+  const [result] = await db
+    .select()
+    .from(results)
+    .where(and(eq(results.id, resultId), eq(results.userId, userId)));
+
+  if (!result) {
+    return c.json({ error: "Result not found" }, 404);
+  }
+  if (result.status !== "completed") {
+    return c.json({ error: "Result must be completed before generating PDF" }, 400);
+  }
+
+  // Already has PDF
+  if (result.pdfKey) {
+    return c.json({ status: "completed", pdfKey: result.pdfKey });
+  }
+
+  // PDF job in progress — check if it's still active
+  if (result.pdfJobId) {
+    const [existingJob] = await db
+      .select()
+      .from(jobs)
+      .where(eq(jobs.id, result.pdfJobId));
+
+    if (existingJob && (existingJob.status === "pending" || existingJob.status === "processing")) {
+      return c.json({ status: existingJob.status, pdfJobId: existingJob.id });
+    }
+    // Job failed or missing — fall through to create a new one
+  }
+
+  // Create new PDF job in transaction
+  const newJob = await db.transaction(async (tx) => {
+    const [jobRow] = await tx
+      .insert(jobs)
+      .values({
+        type: "pdf",
+        payload: { resultId },
+      })
+      .returning();
+
+    await tx
+      .update(results)
+      .set({ pdfJobId: jobRow.id, updatedAt: new Date() })
+      .where(eq(results.id, resultId));
+
+    return jobRow;
+  });
+
+  return c.json({ status: "pending", pdfJobId: newJob.id }, 201);
+});
+
+// GET /api/results/:id/pdf/status — poll PDF generation status
+app.get("/:id/pdf/status", async (c) => {
+  const userId = c.get("userId" as never) as string;
+  const resultId = c.req.param("id");
+  const db = getDb();
+
+  const [result] = await db
+    .select({
+      pdfKey: results.pdfKey,
+      pdfJobId: results.pdfJobId,
+      userId: results.userId,
+    })
+    .from(results)
+    .where(eq(results.id, resultId));
+
+  if (!result) {
+    return c.json({ error: "Result not found" }, 404);
+  }
+  if (result.userId !== userId) {
+    return c.json({ error: "Not authorized" }, 403);
+  }
+
+  if (result.pdfKey) {
+    return c.json({ status: "completed", pdfKey: result.pdfKey });
+  }
+
+  if (result.pdfJobId) {
+    const [job] = await db
+      .select({ status: jobs.status, errorMessage: jobs.errorMessage })
+      .from(jobs)
+      .where(eq(jobs.id, result.pdfJobId));
+
+    if (job) {
+      return c.json({
+        status: job.status,
+        ...(job.errorMessage && { errorMessage: job.errorMessage }),
+      });
+    }
+  }
+
+  return c.json({ status: "not_started" });
+});
+
+// GET /api/results/:id/pdf/download — return presigned download URL
+app.get("/:id/pdf/download", async (c) => {
+  const userId = c.get("userId" as never) as string;
+  const resultId = c.req.param("id");
+  const db = getDb();
+
+  const [result] = await db
+    .select({
+      pdfKey: results.pdfKey,
+      title: results.title,
+      toolType: results.toolType,
+      userId: results.userId,
+    })
+    .from(results)
+    .where(eq(results.id, resultId));
+
+  if (!result) {
+    return c.json({ error: "Result not found" }, 404);
+  }
+  if (result.userId !== userId) {
+    return c.json({ error: "Not authorized" }, 403);
+  }
+  if (!result.pdfKey) {
+    return c.json({ error: "PDF not available" }, 404);
+  }
+
+  const slug = result.title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 60);
+  const filename = `theotank-${result.toolType}-${slug}.pdf`;
+  const url = await presignGetUrl(result.pdfKey, 300, filename);
+
+  return c.json({ url, filename });
 });
 
 export default app;

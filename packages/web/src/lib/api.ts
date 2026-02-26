@@ -15,6 +15,7 @@ import type {
   PollContentResponse,
   ReviewContentResponse,
   ResearchContentResponse,
+  PdfStatusResponse,
 } from "@/data/result-types";
 import type {
   AdminNativeTeam,
@@ -95,6 +96,33 @@ export async function retryResult(
   id: string,
 ): Promise<{ id: string; status: string; toolType: string; title: string; createdAt: string }> {
   return apiClient.post(`/api/results/${id}/retry`);
+}
+
+// ── PDF Generation ──────────────────────────────────────────────────
+
+export async function createPdfJob(
+  resultId: string,
+): Promise<PdfStatusResponse> {
+  return apiClient.post<PdfStatusResponse>(`/api/results/${resultId}/pdf`);
+}
+
+export async function getPdfStatus(
+  resultId: string,
+): Promise<PdfStatusResponse> {
+  return apiClient.get<PdfStatusResponse>(
+    `/api/results/${resultId}/pdf/status`,
+  );
+}
+
+export async function downloadPdf(resultId: string): Promise<void> {
+  const { url, filename } = await apiClient.get<{
+    url: string;
+    filename: string;
+  }>(`/api/results/${resultId}/pdf/download`);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
 }
 
 // ── Review Files ────────────────────────────────────────────────────

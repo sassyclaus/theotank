@@ -39,6 +39,21 @@ export async function presignPutUrl(
   return getSignedUrl(getClient(), command, { expiresIn: 300 });
 }
 
+export async function presignGetUrl(
+  key: string,
+  expiresIn = 300,
+  downloadFilename?: string,
+): Promise<string> {
+  const command = new GetObjectCommand({
+    Bucket: bucket,
+    Key: key,
+    ...(downloadFilename && {
+      ResponseContentDisposition: `attachment; filename="${downloadFilename}"`,
+    }),
+  });
+  return getSignedUrl(getClient(), command, { expiresIn });
+}
+
 export async function deleteObject(key: string): Promise<void> {
   const command = new DeleteObjectCommand({
     Bucket: bucket,

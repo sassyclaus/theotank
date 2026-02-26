@@ -12,6 +12,7 @@ import Library from "@/pages/Library";
 import Theologians from "@/pages/Theologians";
 import TheologianDetail from "@/pages/TheologianDetail";
 import Result from "@/pages/Result";
+import PdfGeneration from "@/pages/PdfGeneration";
 import NotFound from "@/pages/NotFound";
 
 // Admin pages — lazy loaded for code splitting
@@ -177,6 +178,7 @@ export default function App() {
         <Route path="roundtable" element={<Roundtable />} />
         <Route path="research" element={<Research />} />
         <Route path="library" element={<Library />} />
+        <Route path="library/:id/pdf" element={<PdfGeneration />} />
         <Route path="library/:id" element={<Result />} />
         <Route path="theologians" element={<Theologians />} />
         <Route path="theologians/:slug" element={<TheologianDetail />} />

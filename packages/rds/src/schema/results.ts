@@ -114,6 +114,10 @@ export const results = pgTable(
     }),
     models: jsonb("models"),
     contentKey: text("content_key"),
+    pdfKey: text("pdf_key"),
+    pdfJobId: uuid("pdf_job_id").references(() => jobs.id, {
+      onDelete: "set null",
+    }),
     previewData: jsonb("preview_data"),
     previewExcerpt: text("preview_excerpt"),
     retriedFromId: uuid("retried_from_id"),

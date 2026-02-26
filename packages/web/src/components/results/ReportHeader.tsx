@@ -1,16 +1,21 @@
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { ArrowLeft, Download, Share2, Link2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TOOL_LABELS, TOOL_COLORS, TOOL_ICONS } from "@/data/mock-library";
+import { downloadPdf } from "@/lib/api";
 import type { FullResult } from "@/data/mock-results";
 
 interface ReportHeaderProps {
   result: FullResult;
+  resultId?: string;
+  pdfKey?: string | null;
 }
 
-export function ReportHeader({ result }: ReportHeaderProps) {
+export function ReportHeader({ result, resultId, pdfKey }: ReportHeaderProps) {
+  const navigate = useNavigate();
   const colors = TOOL_COLORS[result.tool];
   const Icon = TOOL_ICONS[result.tool];
+  const actualId = resultId ?? result.id;
 
   return (
     <div className="mb-10">
@@ -45,7 +50,17 @@ export function ReportHeader({ result }: ReportHeaderProps) {
           </h1>
 
           <div className="mt-4 flex flex-wrap gap-2">
-            <Button variant="outline" size="sm">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                if (pdfKey) {
+                  downloadPdf(actualId);
+                } else {
+                  navigate(`/library/${actualId}/pdf`);
+                }
+              }}
+            >
               <Download className="h-3.5 w-3.5" />
               PDF
             </Button>

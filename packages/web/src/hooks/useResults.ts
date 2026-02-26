@@ -6,6 +6,8 @@ import {
   getResult,
   getResultProgress,
   getResultContent,
+  createPdfJob,
+  getPdfStatus,
 } from "@/lib/api";
 import type { CreateResultPayload } from "@/data/result-types";
 
@@ -15,6 +17,7 @@ const resultKeys = {
   detail: (id: string) => [...resultKeys.all, "detail", id] as const,
   progress: (id: string) => [...resultKeys.all, "progress", id] as const,
   content: (id: string) => [...resultKeys.all, "content", id] as const,
+  pdfStatus: (id: string) => [...resultKeys.all, "pdf-status", id] as const,
 };
 
 export function useCreateResult() {
@@ -67,5 +70,25 @@ export function useResultContent(id: string | undefined, enabled = false) {
     queryKey: resultKeys.content(id!),
     queryFn: () => getResultContent(id!),
     enabled: !!id && enabled,
+  });
+}
+
+export function useCreatePdfJob() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (resultId: string) => createPdfJob(resultId),
+    onSuccess: (_data, resultId) => {
+      queryClient.invalidateQueries({ queryKey: resultKeys.pdfStatus(resultId) });
+      queryClient.invalidateQueries({ queryKey: resultKeys.detail(resultId) });
+    },
+  });
+}
+
+export function usePdfStatus(id: string | undefined, polling = false) {
+  return useQuery({
+    queryKey: resultKeys.pdfStatus(id!),
+    queryFn: () => getPdfStatus(id!),
+    enabled: !!id,
+    refetchInterval: polling ? 2000 : false,
   });
 }

@@ -42,6 +42,20 @@ export async function downloadBuffer(key: string): Promise<Buffer> {
   return Buffer.from(bytes);
 }
 
+export async function uploadBuffer(
+  key: string,
+  buffer: Buffer,
+  contentType: string,
+): Promise<void> {
+  const command = new PutObjectCommand({
+    Bucket: config.s3.bucket,
+    Key: key,
+    Body: buffer,
+    ContentType: contentType,
+  });
+  await getClient().send(command);
+}
+
 export async function uploadText(key: string, text: string): Promise<void> {
   const command = new PutObjectCommand({
     Bucket: config.s3.bucket,

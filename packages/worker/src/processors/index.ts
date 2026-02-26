@@ -5,6 +5,7 @@ import { processPoll } from "./poll";
 import { processReviewFile } from "./review-file";
 import { processReview } from "./review";
 import { processResearch } from "./research";
+import { processPdf } from "./pdf";
 
 const processors: Record<string, (job: Job) => Promise<void>> = {
   ask: processAsk,
@@ -12,6 +13,7 @@ const processors: Record<string, (job: Job) => Promise<void>> = {
   review_file: processReviewFile,
   review: processReview,
   research: processResearch,
+  pdf: processPdf,
 };
 
 export async function processJob(job: Job): Promise<void> {

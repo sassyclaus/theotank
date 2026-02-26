@@ -24,6 +24,7 @@ export interface MyLibraryItem {
   date: string;
   status: LibraryItemStatus;
   preview: LibraryPreview;
+  pdfKey?: string | null;
 }
 
 export interface CuratedCollection {
