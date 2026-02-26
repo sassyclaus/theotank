@@ -66,7 +66,7 @@ export async function processReviewFile(job: Job): Promise<void> {
   }
 
   // Upload extracted text to S3
-  const textKey = `review-files/${reviewFileId}/text.txt`;
+  const textKey = `review-files/${file.userId}/${reviewFileId}/extracted/text.txt`;
   await uploadText(textKey, extractedText);
 
   // Update review file as ready
