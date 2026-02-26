@@ -11,14 +11,16 @@ import {
   theologians,
   reviewFiles,
 } from "@theotank/rds/schema";
-import { eq, and, desc, asc, isNull, sql } from "drizzle-orm";
+import { eq, and, desc, asc, isNull } from "drizzle-orm";
 import { getObject, presignGetUrl } from "../lib/s3";
+import { createSnapshot } from "../lib/team-helpers";
+import type { AppEnv } from "../lib/types";
 
-const app = new Hono();
+const app = new Hono<AppEnv>();
 
 // POST /api/results — create result + job in transaction
 app.post("/", async (c) => {
-  const userId = c.get("userId" as never) as string;
+  const userId = c.get("userId");
   const body = await c.req.json<
     | { toolType: "ask"; teamId: string; question: string }
     | { toolType: "poll"; teamId: string; question: string; options: string[] }
@@ -80,7 +82,7 @@ app.post("/", async (c) => {
 
   const db = getDb();
 
-  const log = (c.get("log" as never) as import("../lib/logger").Logger) || undefined;
+  const log = c.get("log");
 
   let result;
   try {
@@ -262,7 +264,7 @@ app.post("/", async (c) => {
 
 // GET /api/results — list user's results (My Library)
 app.get("/", async (c) => {
-  const userId = c.get("userId" as never) as string;
+  const userId = c.get("userId");
   const db = getDb();
 
   const rows = await db
@@ -290,7 +292,7 @@ app.get("/", async (c) => {
 
 // GET /api/results/:id — single result metadata
 app.get("/:id", async (c) => {
-  const userId = c.get("userId" as never) as string;
+  const userId = c.get("userId");
   const resultId = c.req.param("id");
   const db = getDb();
 
@@ -329,7 +331,7 @@ app.get("/:id", async (c) => {
 
 // POST /api/results/:id/retry — retry a failed result
 app.post("/:id/retry", async (c) => {
-  const userId = c.get("userId" as never) as string;
+  const userId = c.get("userId");
   const resultId = c.req.param("id");
   const db = getDb();
 
@@ -434,7 +436,7 @@ app.get("/:id/content", async (c) => {
 
 // POST /api/results/:id/pdf — create PDF generation job (idempotent)
 app.post("/:id/pdf", async (c) => {
-  const userId = c.get("userId" as never) as string;
+  const userId = c.get("userId");
   const resultId = c.req.param("id");
   const db = getDb();
 
@@ -491,7 +493,7 @@ app.post("/:id/pdf", async (c) => {
 
 // GET /api/results/:id/pdf/status — poll PDF generation status
 app.get("/:id/pdf/status", async (c) => {
-  const userId = c.get("userId" as never) as string;
+  const userId = c.get("userId");
   const resultId = c.req.param("id");
   const db = getDb();
 
@@ -534,7 +536,7 @@ app.get("/:id/pdf/status", async (c) => {
 
 // GET /api/results/:id/pdf/download — return presigned download URL
 app.get("/:id/pdf/download", async (c) => {
-  const userId = c.get("userId" as never) as string;
+  const userId = c.get("userId");
   const resultId = c.req.param("id");
   const db = getDb();
 

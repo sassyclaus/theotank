@@ -1,14 +1,8 @@
 import { createMiddleware } from "hono/factory";
 import { logger } from "../lib/logger";
+import type { AppEnv } from "../lib/types";
 
-type RequestLoggerEnv = {
-  Variables: {
-    requestId: string;
-    log: typeof logger;
-  };
-};
-
-export const requestLogger = createMiddleware<RequestLoggerEnv>(
+export const requestLogger = createMiddleware<AppEnv>(
   async (c, next) => {
     const requestId = crypto.randomUUID().slice(0, 8);
     const log = logger.child({ requestId });
@@ -21,7 +15,7 @@ export const requestLogger = createMiddleware<RequestLoggerEnv>(
     const duration_ms = Math.round(performance.now() - start);
 
     const statusCode = c.res.status;
-    const userId = (c.get("userId" as never) as string) || undefined;
+    const userId = c.get("userId") || undefined;
 
     const fields = {
       method: c.req.method,

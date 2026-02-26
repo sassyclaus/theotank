@@ -4,8 +4,9 @@ import { theologians, teams, teamMemberships } from "@theotank/rds/schema";
 import { eq, asc, and } from "drizzle-orm";
 import { colorForTradition } from "../lib/tradition-colors";
 import { publicUrl } from "../lib/s3";
+import type { AppEnv } from "../lib/types";
 
-const app = new Hono();
+const app = new Hono<AppEnv>();
 
 function shapeTheologian(
   row: typeof theologians.$inferSelect,

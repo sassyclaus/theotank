@@ -9,8 +9,9 @@ import teams from "./routes/teams";
 import results from "./routes/results";
 import reviewFilesRoute from "./routes/review-files";
 import admin from "./routes/admin";
+import type { AppEnv } from "./lib/types";
 
-const app = new Hono();
+const app = new Hono<AppEnv>();
 
 // Structured request/response logging
 app.use("*", requestLogger);
@@ -27,7 +28,7 @@ app.use(
 
 // Global error handler
 app.onError((err, c) => {
-  const log = (c.get("log" as never) as typeof logger) || logger;
+  const log = c.get("log") || logger;
   log.error({ err, method: c.req.method, path: c.req.path }, "Unhandled error");
   return c.json({ error: "Internal server error" }, 500);
 });

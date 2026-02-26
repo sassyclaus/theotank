@@ -7,54 +7,10 @@ import {
   theologians,
 } from "@theotank/rds/schema";
 import { eq, asc, desc, and } from "drizzle-orm";
-import { colorForTradition } from "../../lib/tradition-colors";
+import { shapeMember, createSnapshot } from "../../lib/team-helpers";
+import type { AppEnv } from "../../lib/types";
 
-const app = new Hono();
-
-function shapeMember(row: {
-  theologianId: string;
-  name: string;
-  slug: string;
-  initials: string | null;
-  tradition: string | null;
-}) {
-  return {
-    theologianId: row.theologianId,
-    name: row.name,
-    slug: row.slug,
-    initials: row.initials,
-    tradition: row.tradition,
-    color: colorForTradition(row.tradition),
-  };
-}
-
-async function createSnapshot(
-  tx: Parameters<Parameters<ReturnType<typeof getDb>["transaction"]>[0]>[0],
-  teamId: string,
-  teamName: string,
-  teamDescription: string | null,
-  version: number,
-) {
-  const memberRows = await tx
-    .select({
-      theologianId: theologians.id,
-      name: theologians.name,
-      initials: theologians.initials,
-      tradition: theologians.tradition,
-    })
-    .from(teamMemberships)
-    .innerJoin(theologians, eq(teamMemberships.theologianId, theologians.id))
-    .where(eq(teamMemberships.teamId, teamId))
-    .orderBy(asc(theologians.name));
-
-  await tx.insert(teamSnapshots).values({
-    teamId,
-    version,
-    name: teamName,
-    description: teamDescription,
-    members: memberRows,
-  });
-}
+const app = new Hono<AppEnv>();
 
 // GET /api/admin/teams — list all native teams with full members
 app.get("/", async (c) => {

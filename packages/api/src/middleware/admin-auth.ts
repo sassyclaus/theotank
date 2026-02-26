@@ -1,10 +1,5 @@
 import { createMiddleware } from "hono/factory";
-
-type AdminAuthEnv = {
-  Variables: {
-    userId: string;
-  };
-};
+import type { AppEnv } from "../lib/types";
 
 const getAdminIds = (): Set<string> => {
   const raw = process.env.ADMIN_USER_IDS || "";
@@ -16,7 +11,7 @@ const getAdminIds = (): Set<string> => {
   );
 };
 
-export const adminAuth = createMiddleware<AdminAuthEnv>(async (c, next) => {
+export const adminAuth = createMiddleware<AppEnv>(async (c, next) => {
   const userId = c.get("userId");
   const adminIds = getAdminIds();
 

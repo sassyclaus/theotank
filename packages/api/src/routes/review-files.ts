@@ -3,6 +3,7 @@ import { getDb } from "@theotank/rds/db";
 import { reviewFiles, jobs } from "@theotank/rds/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { presignPutUrl, deleteObject } from "../lib/s3";
+import type { AppEnv } from "../lib/types";
 
 const ALLOWED_TYPES = [
   "application/pdf",
@@ -29,11 +30,11 @@ function isAllowedType(contentType: string): boolean {
   return false;
 }
 
-const app = new Hono();
+const app = new Hono<AppEnv>();
 
 // POST /api/review-files/upload-url — create row + return presigned URL
 app.post("/upload-url", async (c) => {
-  const userId = c.get("userId" as never) as string;
+  const userId = c.get("userId");
   const body = await c.req.json<{
     fileName: string;
     contentType: string;
@@ -86,7 +87,7 @@ app.post("/upload-url", async (c) => {
 
 // POST /api/review-files/:id/confirm — mark as uploaded, create processing job
 app.post("/:id/confirm", async (c) => {
-  const userId = c.get("userId" as never) as string;
+  const userId = c.get("userId");
   const fileId = c.req.param("id");
   const db = getDb();
 
@@ -126,7 +127,7 @@ app.post("/:id/confirm", async (c) => {
 
 // GET /api/review-files — list user's review files
 app.get("/", async (c) => {
-  const userId = c.get("userId" as never) as string;
+  const userId = c.get("userId");
   const db = getDb();
 
   const rows = await db
@@ -150,7 +151,7 @@ app.get("/", async (c) => {
 
 // DELETE /api/review-files/:id — delete file + S3 objects
 app.delete("/:id", async (c) => {
-  const userId = c.get("userId" as never) as string;
+  const userId = c.get("userId");
   const fileId = c.req.param("id");
   const db = getDb();
 

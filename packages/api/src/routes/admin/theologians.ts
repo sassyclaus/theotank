@@ -3,8 +3,9 @@ import { getDb } from "@theotank/rds/db";
 import { theologians } from "@theotank/rds/schema";
 import { eq, asc } from "drizzle-orm";
 import { presignPutUrl, publicUrl } from "../../lib/s3";
+import type { AppEnv } from "../../lib/types";
 
-const app = new Hono();
+const app = new Hono<AppEnv>();
 
 type TheologianRow = typeof theologians.$inferSelect;
 

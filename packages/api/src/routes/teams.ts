@@ -1,55 +1,11 @@
 import { Hono } from "hono";
 import { getDb } from "@theotank/rds/db";
-import { teams, teamMemberships, teamSnapshots, theologians } from "@theotank/rds/schema";
+import { teams, teamMemberships, theologians } from "@theotank/rds/schema";
 import { eq, and, asc } from "drizzle-orm";
-import { colorForTradition } from "../lib/tradition-colors";
+import { shapeMember, createSnapshot } from "../lib/team-helpers";
+import type { AppEnv } from "../lib/types";
 
-const app = new Hono();
-
-async function createSnapshot(
-  tx: Parameters<Parameters<ReturnType<typeof getDb>["transaction"]>[0]>[0],
-  teamId: string,
-  teamName: string,
-  teamDescription: string | null,
-  version: number,
-) {
-  const memberRows = await tx
-    .select({
-      theologianId: theologians.id,
-      name: theologians.name,
-      initials: theologians.initials,
-      tradition: theologians.tradition,
-    })
-    .from(teamMemberships)
-    .innerJoin(theologians, eq(teamMemberships.theologianId, theologians.id))
-    .where(eq(teamMemberships.teamId, teamId))
-    .orderBy(asc(theologians.name));
-
-  await tx.insert(teamSnapshots).values({
-    teamId,
-    version,
-    name: teamName,
-    description: teamDescription,
-    members: memberRows,
-  });
-}
-
-function shapeMember(row: {
-  theologianId: string;
-  name: string;
-  slug: string;
-  initials: string | null;
-  tradition: string | null;
-}) {
-  return {
-    theologianId: row.theologianId,
-    name: row.name,
-    slug: row.slug,
-    initials: row.initials,
-    tradition: row.tradition,
-    color: colorForTradition(row.tradition),
-  };
-}
+const app = new Hono<AppEnv>();
 
 // GET /api/teams — list native teams with member previews
 app.get("/", async (c) => {
@@ -95,7 +51,7 @@ app.get("/", async (c) => {
 
 // GET /api/teams/my — list user's custom teams with full members
 app.get("/my", async (c) => {
-  const userId = c.get("userId" as never) as string;
+  const userId = c.get("userId");
   const db = getDb();
 
   const userTeams = await db
@@ -134,7 +90,7 @@ app.get("/my", async (c) => {
 
 // POST /api/teams — create custom team
 app.post("/", async (c) => {
-  const userId = c.get("userId" as never) as string;
+  const userId = c.get("userId");
   const body = await c.req.json<{
     name: string;
     description?: string;
@@ -194,7 +150,7 @@ app.post("/", async (c) => {
 
 // PUT /api/teams/:id — update custom team
 app.put("/:id", async (c) => {
-  const userId = c.get("userId" as never) as string;
+  const userId = c.get("userId");
   const teamId = c.req.param("id");
   const body = await c.req.json<{
     name?: string;
@@ -281,7 +237,7 @@ app.put("/:id", async (c) => {
 
 // DELETE /api/teams/:id — delete custom team
 app.delete("/:id", async (c) => {
-  const userId = c.get("userId" as never) as string;
+  const userId = c.get("userId");
   const teamId = c.req.param("id");
 
   const db = getDb();
