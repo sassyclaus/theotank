@@ -10,6 +10,9 @@ export const config = {
   workerId: process.env.WORKER_ID ?? `worker-${process.pid}`,
   pollIntervalMs: Number(process.env.WORKER_POLL_INTERVAL_MS) || 2000,
   maxConcurrency: Number(process.env.WORKER_MAX_CONCURRENCY) || 3,
+  aiMaxConcurrency: Number(process.env.AI_MAX_CONCURRENCY) || 10,
+  staleLockThresholdMs: Number(process.env.WORKER_STALE_LOCK_THRESHOLD_MS) || 7200000, // 2 hours
+  staleLockCheckMs: Number(process.env.WORKER_STALE_LOCK_CHECK_MS) || 60000, // 1 min
   port: Number(process.env.PORT) || 3002,
 };
 

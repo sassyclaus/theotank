@@ -1,15 +1,17 @@
 import { Hono } from "hono";
 import { config, validateConfig } from "./config";
 import { ConcurrencyPool } from "./pool";
-import { claimJob } from "./queue";
+import { claimJob, recoverStaleJobs } from "./queue";
 import { processJob } from "./processors";
 import { closeDb } from "@theotank/rds/db";
 import { logger } from "./lib/logger";
+import { ai } from "./lib/openai";
 
 validateConfig();
 
 const pool = new ConcurrencyPool(config.maxConcurrency);
 let running = true;
+let staleLockTimer: ReturnType<typeof setInterval> | null = null;
 
 // ── Hono health server ──────────────────────────────────────────────
 const app = new Hono();
@@ -21,6 +23,7 @@ app.get("/health", (c) =>
     activeJobs: pool.active,
     maxConcurrency: pool.max,
     availableSlots: pool.available,
+    aiStats: ai.getStats(),
   })
 );
 
@@ -51,6 +54,11 @@ async function shutdown(signal: string): Promise<void> {
   logger.info({ signal, workerId: config.workerId }, "Shutdown signal received");
   running = false;
 
+  if (staleLockTimer) {
+    clearInterval(staleLockTimer);
+    staleLockTimer = null;
+  }
+
   logger.info(
     { activeJobs: pool.active, workerId: config.workerId },
     "Draining in-flight jobs",
@@ -71,9 +79,21 @@ logger.info(
     workerId: config.workerId,
     pollIntervalMs: config.pollIntervalMs,
     maxConcurrency: config.maxConcurrency,
+    aiMaxConcurrency: config.aiMaxConcurrency,
+    staleLockThresholdMs: config.staleLockThresholdMs,
+    staleLockCheckMs: config.staleLockCheckMs,
   },
   "Worker starting",
 );
+
+staleLockTimer = setInterval(async () => {
+  try {
+    await recoverStaleJobs(config.staleLockThresholdMs, config.workerId);
+  } catch (err) {
+    logger.error({ err }, "Stale lock recovery error");
+  }
+}, config.staleLockCheckMs);
+
 pollLoop();
 
 export default {

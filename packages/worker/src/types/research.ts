@@ -2,6 +2,34 @@ export interface ResearchJobPayload {
   resultId: string;
 }
 
+// ── Algorithm Config ──────────────────────────────────────────────────
+
+export interface ResearchAlgoConfig {
+  defaultModels: {
+    interpreter: { model: string; provider: string };
+    search_planner: { model: string; provider: string };
+    translator: { model: string; provider: string };
+    claim_extractor: { model: string; provider: string };
+    verifier: { model: string; provider: string };
+    synthesizer: { model: string; provider: string };
+  };
+  embedding: { model: string; dimensions: number };
+  retrieval: {
+    maxLoci: number;
+    maxPerWork: number;
+    maxEvidenceItems: number;
+    maxAngles: number;
+    contextWindowParagraphs: number;
+    topNodesPerAngle: number;
+    topParagraphsPerNode: number;
+    topDirectParagraphs: number;
+    topTrigramResults: number;
+    topTranslationFtsResults: number;
+    topTranslationSemanticResults: number;
+  };
+  claims: { maxClaimsPerLocus: number; maxLociForSynthesis: number };
+}
+
 // ── Stage 0.5: Interpretation ──────────────────────────────────────
 
 export interface InterpretationAngle {

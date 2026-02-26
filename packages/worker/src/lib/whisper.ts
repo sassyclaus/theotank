@@ -1,9 +1,6 @@
-import OpenAI, { toFile } from "openai";
 import { readFile } from "fs/promises";
 import { basename } from "path";
-import { config } from "../config";
-
-const openai = new OpenAI({ apiKey: config.openaiApiKey });
+import { ai } from "./openai";
 
 /**
  * Transcribe an audio file using OpenAI Whisper API.
@@ -12,17 +9,10 @@ const openai = new OpenAI({ apiKey: config.openaiApiKey });
  */
 export async function transcribeFile(filePath: string): Promise<string> {
   const buffer = await readFile(filePath);
-  const file = await toFile(buffer, basename(filePath));
-
-  const transcription = await openai.audio.transcriptions.create({
-    model: "whisper-1",
-    file,
-    response_format: "text",
-  });
-
-  return typeof transcription === "string"
-    ? transcription
-    : (transcription as unknown as { text: string }).text;
+  return ai.transcribe(
+    { file: buffer, fileName: basename(filePath) },
+    { label: `transcribe:${basename(filePath)}` },
+  );
 }
 
 /**

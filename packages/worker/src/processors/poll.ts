@@ -1,19 +1,16 @@
-import OpenAI from "openai";
 import { getDb } from "@theotank/rds/db";
 import {
   results,
-  algorithmVersions,
   teamSnapshots,
   theologians,
-  jobs,
 } from "@theotank/rds/schema";
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import type { Job } from "@theotank/rds/schema";
-import type { Logger } from "../lib/logger";
-import { config } from "../config";
+import { ai } from "../lib/openai";
 import { logProgress } from "../progress";
 import { uploadJson } from "../s3";
 import { colorForTradition } from "../lib/tradition-colors";
+import { withResultContext, failBoth, type ResultContext } from "./scaffold";
 import {
   buildPollSystemPrompt,
   buildRecallPrompt,
@@ -34,24 +31,6 @@ import type {
   PollContent,
 } from "../types/poll";
 
-const openai = new OpenAI({ apiKey: config.openaiApiKey });
-
-async function failBoth(
-  resultId: string,
-  jobId: string,
-  message: string,
-): Promise<void> {
-  const db = getDb();
-  await db
-    .update(results)
-    .set({ status: "failed", errorMessage: message, updatedAt: new Date() })
-    .where(eq(results.id, resultId));
-  await db
-    .update(jobs)
-    .set({ status: "failed", errorMessage: message, updatedAt: new Date() })
-    .where(eq(jobs.id, jobId));
-}
-
 // ── Era helpers (for summary prompt context only) ──────────────────
 
 type Era = "Patristic" | "Medieval" | "Reformation" | "Post-Reformation" | "Modern";
@@ -64,38 +43,15 @@ function birthYearToEra(born: number): Era {
   return "Modern";
 }
 
+const POLL_BATCH_SIZE = 20;
+
 // ── Main processor ─────────────────────────────────────────────────
 
-export async function processPoll(job: Job, log: Logger): Promise<void> {
+export const processPoll = withResultContext("poll", async (job: Job, ctx: ResultContext) => {
+  const { result, algoVersion, log } = ctx;
   const db = getDb();
   const payload = job.payload as PollJobPayload;
   const { resultId } = payload;
-
-  // 1. Load result row
-  const [result] = await db
-    .select()
-    .from(results)
-    .where(eq(results.id, resultId));
-  if (!result) {
-    throw new Error(`Result ${resultId} not found`);
-  }
-
-  log = log.child({ resultId, userId: result.userId });
-
-  // 2. Load active algorithm version
-  const [algoVersion] = await db
-    .select()
-    .from(algorithmVersions)
-    .where(
-      and(
-        eq(algorithmVersions.toolType, "poll"),
-        eq(algorithmVersions.isActive, true),
-      ),
-    );
-  if (!algoVersion) {
-    await failBoth(resultId, job.id, "No active algorithm version for poll");
-    return;
-  }
 
   const algoConfig = algoVersion.config as {
     defaultModels: {
@@ -105,17 +61,7 @@ export async function processPoll(job: Job, log: Logger): Promise<void> {
     };
   };
 
-  // 3. Mark result as processing
-  await db
-    .update(results)
-    .set({
-      status: "processing",
-      algorithmVersionId: algoVersion.id,
-      updatedAt: new Date(),
-    })
-    .where(eq(results.id, resultId));
-
-  // 4. Load team snapshot → theologian details
+  // Load team snapshot → theologian details
   if (!result.teamSnapshotId) {
     await failBoth(resultId, job.id, "No team snapshot linked to result");
     return;
@@ -137,7 +83,6 @@ export async function processPoll(job: Job, log: Logger): Promise<void> {
     tradition: string | null;
   }>;
 
-  // Load full theologian rows
   const theologianRows = await Promise.all(
     members.map(async (m) => {
       const [t] = await db
@@ -167,186 +112,179 @@ export async function processPoll(job: Job, log: Logger): Promise<void> {
   let step = 0;
   await logProgress(resultId, step++, "Gathering your panel of theologians...");
 
-  // 5. Per-theologian 3-pass loop (serial)
+  // Per-theologian 3-pass loop (batched parallel)
   const recallModel = algoConfig.defaultModels.recall.model;
   const critiqueModel = algoConfig.defaultModels.critique.model;
   const selectModel = algoConfig.defaultModels.select.model;
 
   const successful: PollTheologianResult[] = [];
   const errors: PollTheologianError[] = [];
+  let stepCounter = step;
 
-  for (let i = 0; i < validTheologians.length; i++) {
-    const t = validTheologians[i];
-    const position_label = `(${i + 1}/${validTheologians.length})`;
+  for (let i = 0; i < validTheologians.length; i += POLL_BATCH_SIZE) {
+    const batch = validTheologians.slice(i, i + POLL_BATCH_SIZE);
+    await Promise.allSettled(
+      batch.map(async (t) => {
+        const theologianStep = ++stepCounter;
+        const positionLabel = `(${i + batch.indexOf(t) + 1}/${validTheologians.length})`;
 
-    await logProgress(
-      resultId,
-      step++,
-      `${t.name} is reflecting on the question... ${position_label}`,
-      { theologianId: t.id },
-    );
+        await logProgress(
+          resultId,
+          theologianStep,
+          `${t.name} is reflecting on the question... ${positionLabel}`,
+          { theologianId: t.id },
+        );
 
-    const systemPrompt = buildPollSystemPrompt({
-      name: t.name,
-      born: t.born,
-      died: t.died,
-      tagline: t.tagline,
-      voiceStyle: t.voiceStyle,
-      tradition: t.tradition,
-    });
-
-    // ── Pass 1: Recall ──────────────────────────────────────────
-    let recalledPosition: string;
-    try {
-      const t0 = performance.now();
-      const response = await openai.chat.completions.create({
-        model: recallModel,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: buildRecallPrompt(t.name, question) },
-        ],
-      });
-
-      const duration_ms = Math.round(performance.now() - t0);
-      log.debug({ stage: "recall", theologian: t.name, model: recallModel, duration_ms }, "LLM recall completed");
-
-      const content = response.choices[0]?.message?.content;
-      if (!content) {
-        errors.push({ theologianName: t.name, error: "Empty recall response" });
-        continue;
-      }
-      recalledPosition = content.trim();
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Unknown recall error";
-      errors.push({ theologianName: t.name, error: `Recall failed: ${msg}` });
-      continue;
-    }
-
-    // ── Pass 2: Critique (soft failure) ─────────────────────────
-    await logProgress(
-      resultId,
-      step++,
-      `Verifying ${t.name}'s position for accuracy...`,
-      { theologianId: t.id },
-    );
-
-    let position = recalledPosition;
-    let critiqueStrength: "none" | "minor" | "major" = "none";
-
-    try {
-      const response = await openai.chat.completions.create({
-        model: critiqueModel,
-        messages: [
-          { role: "system", content: systemPrompt },
-          {
-            role: "user",
-            content: buildCritiquePrompt(t.name, question, recalledPosition),
-          },
-        ],
-        response_format: {
-          type: "json_schema",
-          json_schema: critiqueJsonSchema,
-        },
-      });
-
-      const content = response.choices[0]?.message?.content;
-      if (content) {
-        const critique: LLMCritiqueResponse = JSON.parse(content);
-        if (!critique.is_accurate && critique.corrected_position) {
-          position = critique.corrected_position;
-        }
-        critiqueStrength = critique.critique_strength;
-      }
-    } catch {
-      // Critique soft failure — proceed with original recalled position
-    }
-
-    // ── Pass 3: Select ──────────────────────────────────────────
-    await logProgress(
-      resultId,
-      step++,
-      `${t.name} is casting their vote...`,
-      { theologianId: t.id },
-    );
-
-    const critiqueWarning = buildCritiqueWarning(critiqueStrength);
-
-    try {
-      const t0 = performance.now();
-      const response = await openai.chat.completions.create({
-        model: selectModel,
-        messages: [
-          { role: "system", content: systemPrompt },
-          {
-            role: "user",
-            content: buildSelectPrompt(
-              t.name,
-              question,
-              position,
-              optionsText,
-              critiqueWarning,
-              t.voiceStyle,
-            ),
-          },
-        ],
-        response_format: {
-          type: "json_schema",
-          json_schema: pollSelectJsonSchema,
-        },
-      });
-
-      const duration_ms = Math.round(performance.now() - t0);
-      log.debug({ stage: "select", theologian: t.name, model: selectModel, duration_ms }, "LLM select completed");
-
-      const content = response.choices[0]?.message?.content;
-      if (!content) {
-        errors.push({ theologianName: t.name, error: "Empty select response" });
-        continue;
-      }
-
-      const parsed: LLMPollResponse = JSON.parse(content);
-
-      // Parse the first uppercase letter from the response and map to option index
-      const letterMatch = parsed.selected_option.trim().match(/^([A-Z])/i);
-      const letterIndex = letterMatch
-        ? letterMatch[1].toUpperCase().charCodeAt(0) - 65
-        : -1;
-      const selectedLabel = optionLabels[letterIndex];
-      if (!selectedLabel) {
-        errors.push({
-          theologianName: t.name,
-          error: `Invalid option selected: "${parsed.selected_option}"`,
-        });
-        continue;
-      }
-
-      const dates = t.born
-        ? t.died
-          ? `${t.born}–${t.died}`
-          : `b. ${t.born}`
-        : "";
-
-      successful.push({
-        theologian: {
+        const systemPrompt = buildPollSystemPrompt({
           name: t.name,
-          initials: t.initials ?? t.name.substring(0, 2).toUpperCase(),
-          dates,
-          tradition: t.tradition ?? "Christian",
-          color: colorForTradition(t.tradition),
           born: t.born,
-        },
-        recalledPosition: position,
-        selection: selectedLabel,
-        justification: parsed.justification,
-      });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Unknown select error";
-      errors.push({ theologianName: t.name, error: `Select failed: ${msg}` });
-      continue;
-    }
+          died: t.died,
+          tagline: t.tagline,
+          voiceStyle: t.voiceStyle,
+          tradition: t.tradition,
+        });
+
+        // ── Pass 1: Recall ──────────────────────────────────────
+        let recalledPosition: string;
+        try {
+          const response = await ai.chat(
+            {
+              model: recallModel,
+              messages: [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: buildRecallPrompt(t.name, question) },
+              ],
+            },
+            { label: `recall:${t.name}`, log },
+          );
+
+          const content = response.choices[0]?.message?.content;
+          if (!content) {
+            errors.push({ theologianName: t.name, error: "Empty recall response" });
+            return;
+          }
+          recalledPosition = content.trim();
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : "Unknown recall error";
+          errors.push({ theologianName: t.name, error: `Recall failed: ${msg}` });
+          return;
+        }
+
+        // ── Pass 2: Critique (soft failure) ─────────────────────
+        let position = recalledPosition;
+        let critiqueStrength: "none" | "minor" | "major" = "none";
+
+        try {
+          const response = await ai.chat(
+            {
+              model: critiqueModel,
+              messages: [
+                { role: "system", content: systemPrompt },
+                {
+                  role: "user",
+                  content: buildCritiquePrompt(t.name, question, recalledPosition),
+                },
+              ],
+              response_format: {
+                type: "json_schema",
+                json_schema: critiqueJsonSchema,
+              },
+            },
+            { label: `critique:${t.name}`, log },
+          );
+
+          const content = response.choices[0]?.message?.content;
+          if (content) {
+            const critique: LLMCritiqueResponse = JSON.parse(content);
+            if (!critique.is_accurate && critique.corrected_position) {
+              position = critique.corrected_position;
+            }
+            critiqueStrength = critique.critique_strength;
+          }
+        } catch {
+          // Critique soft failure — proceed with original recalled position
+        }
+
+        // ── Pass 3: Select ──────────────────────────────────────
+        const critiqueWarning = buildCritiqueWarning(critiqueStrength);
+
+        try {
+          const response = await ai.chat(
+            {
+              model: selectModel,
+              messages: [
+                { role: "system", content: systemPrompt },
+                {
+                  role: "user",
+                  content: buildSelectPrompt(
+                    t.name,
+                    question,
+                    position,
+                    optionsText,
+                    critiqueWarning,
+                    t.voiceStyle,
+                  ),
+                },
+              ],
+              response_format: {
+                type: "json_schema",
+                json_schema: pollSelectJsonSchema,
+              },
+            },
+            { label: `select:${t.name}`, log },
+          );
+
+          const content = response.choices[0]?.message?.content;
+          if (!content) {
+            errors.push({ theologianName: t.name, error: "Empty select response" });
+            return;
+          }
+
+          const parsed: LLMPollResponse = JSON.parse(content);
+
+          const letterMatch = parsed.selected_option.trim().match(/^([A-Z])/i);
+          const letterIndex = letterMatch
+            ? letterMatch[1].toUpperCase().charCodeAt(0) - 65
+            : -1;
+          const selectedLabel = optionLabels[letterIndex];
+          if (!selectedLabel) {
+            errors.push({
+              theologianName: t.name,
+              error: `Invalid option selected: "${parsed.selected_option}"`,
+            });
+            return;
+          }
+
+          const dates = t.born
+            ? t.died
+              ? `${t.born}–${t.died}`
+              : `b. ${t.born}`
+            : "";
+
+          successful.push({
+            theologian: {
+              name: t.name,
+              initials: t.initials ?? t.name.substring(0, 2).toUpperCase(),
+              dates,
+              tradition: t.tradition ?? "Christian",
+              color: colorForTradition(t.tradition),
+              born: t.born,
+            },
+            recalledPosition: position,
+            selection: selectedLabel,
+            justification: parsed.justification,
+          });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : "Unknown select error";
+          errors.push({ theologianName: t.name, error: `Select failed: ${msg}` });
+        }
+      }),
+    );
   }
 
-  // 6. Fail if zero theologians succeeded
+  step = stepCounter + 1;
+
+  // Fail if zero theologians succeeded
   if (successful.length === 0) {
     await failBoth(
       resultId,
@@ -361,7 +299,7 @@ export async function processPoll(job: Job, log: Logger): Promise<void> {
     "Theologian voting complete",
   );
 
-  // 7. Compute summary prompt context (counts + era breakdown)
+  // Compute summary prompt context (counts + era breakdown)
   const totalPolled = successful.length;
   const optionCountMap: Record<string, number> = {};
   for (const label of optionLabels) {
@@ -407,7 +345,7 @@ export async function processPoll(job: Job, log: Logger): Promise<void> {
   }
   const eraBreakdown = eraBreakdownLines.join("\n");
 
-  // 8. Generate narrative summary
+  // Generate narrative summary
   await logProgress(
     resultId,
     step++,
@@ -422,47 +360,37 @@ export async function processPoll(job: Job, log: Logger): Promise<void> {
 
   let summary: string;
   try {
-    const t0 = performance.now();
-    const response = await openai.chat.completions.create({
-      model: algoConfig.defaultModels.select.model,
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are a theological analysis engine. Write concise, analytical summaries of poll results.",
-        },
-        {
-          role: "user",
-          content: buildSummaryPrompt(
-            question,
-            optionLabels,
-            optionCountMap,
-            totalPolled,
-            eraBreakdown,
-            successful.map((s) => ({
-              name: s.theologian.name,
-              selection: s.selection,
-              justification: s.justification,
-            })),
-          ),
-        },
-      ],
-      response_format: {
-        type: "json_schema",
-        json_schema: summaryJsonSchema,
-      },
-    });
-
-    const duration_ms = Math.round(performance.now() - t0);
-    const usage = response.usage;
-    log.info(
+    const response = await ai.chat(
       {
-        stage: "summary",
         model: algoConfig.defaultModels.select.model,
-        duration_ms,
-        ...(usage && { promptTokens: usage.prompt_tokens, completionTokens: usage.completion_tokens, totalTokens: usage.total_tokens }),
+        messages: [
+          {
+            role: "system",
+            content:
+              "You are a theological analysis engine. Write concise, analytical summaries of poll results.",
+          },
+          {
+            role: "user",
+            content: buildSummaryPrompt(
+              question,
+              optionLabels,
+              optionCountMap,
+              totalPolled,
+              eraBreakdown,
+              successful.map((s) => ({
+                name: s.theologian.name,
+                selection: s.selection,
+                justification: s.justification,
+              })),
+            ),
+          },
+        ],
+        response_format: {
+          type: "json_schema",
+          json_schema: summaryJsonSchema,
+        },
       },
-      "LLM summary completed",
+      { label: "summary", log },
     );
 
     const content = response.choices[0]?.message?.content;
@@ -478,7 +406,7 @@ export async function processPoll(job: Job, log: Logger): Promise<void> {
     summary = `Of ${totalPolled} theologians polled, "${topLabel}" received the plurality with ${topPct}% (${optionCountMap[topLabel]} votes). The remaining votes were distributed among the other options.`;
   }
 
-  // 9. Build content and upload to S3
+  // Build content and upload to S3
   const pollContent: PollContent = {
     question,
     optionLabels,
@@ -503,11 +431,10 @@ export async function processPoll(job: Job, log: Logger): Promise<void> {
 
   await uploadJson(contentKey, pollContent);
 
-  // 10. Update result as completed
+  // Update result as completed
   const previewExcerpt =
     summary.length > 200 ? summary.substring(0, 200) + "..." : summary;
 
-  // Lightweight preview bars for library cards
   const previewBars = optionLabels.map((label) => ({
     label,
     percentage:
@@ -534,4 +461,4 @@ export async function processPoll(job: Job, log: Logger): Promise<void> {
       updatedAt: now,
     })
     .where(eq(results.id, resultId));
-}
+});

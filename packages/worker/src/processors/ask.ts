@@ -1,19 +1,12 @@
-import OpenAI from "openai";
 import { getDb } from "@theotank/rds/db";
-import {
-  results,
-  algorithmVersions,
-  teamSnapshots,
-  theologians,
-  jobs,
-} from "@theotank/rds/schema";
-import { eq, and } from "drizzle-orm";
+import { results, teamSnapshots, theologians } from "@theotank/rds/schema";
+import { eq } from "drizzle-orm";
 import type { Job } from "@theotank/rds/schema";
-import type { Logger } from "../lib/logger";
-import { config } from "../config";
+import { ai } from "../lib/openai";
 import { logProgress } from "../progress";
 import { uploadJson } from "../s3";
 import { colorForTradition } from "../lib/tradition-colors";
+import { withResultContext, failBoth, type ResultContext } from "./scaffold";
 import {
   buildPerspectiveSystemPrompt,
   buildPerspectiveUserPrompt,
@@ -32,58 +25,11 @@ import type {
   LLMSynthesisResponse,
 } from "../types/ask";
 
-const openai = new OpenAI({ apiKey: config.openaiApiKey });
-
-async function failBoth(
-  resultId: string,
-  jobId: string,
-  message: string
-): Promise<void> {
-  const db = getDb();
-  await db
-    .update(results)
-    .set({ status: "failed", errorMessage: message, updatedAt: new Date() })
-    .where(eq(results.id, resultId));
-  await db
-    .update(jobs)
-    .set({
-      status: "failed",
-      errorMessage: message,
-      updatedAt: new Date(),
-    })
-    .where(eq(jobs.id, jobId));
-}
-
-export async function processAsk(job: Job, log: Logger): Promise<void> {
+export const processAsk = withResultContext("ask", async (job: Job, ctx: ResultContext) => {
+  const { result, algoVersion, log } = ctx;
   const db = getDb();
   const payload = job.payload as AskJobPayload;
   const { resultId } = payload;
-
-  // 1. Load result row
-  const [result] = await db
-    .select()
-    .from(results)
-    .where(eq(results.id, resultId));
-  if (!result) {
-    throw new Error(`Result ${resultId} not found`);
-  }
-
-  log = log.child({ resultId, userId: result.userId });
-
-  // 2. Load active algorithm version
-  const [algoVersion] = await db
-    .select()
-    .from(algorithmVersions)
-    .where(
-      and(
-        eq(algorithmVersions.toolType, "ask"),
-        eq(algorithmVersions.isActive, true)
-      )
-    );
-  if (!algoVersion) {
-    await failBoth(resultId, job.id, "No active algorithm version for ask");
-    return;
-  }
 
   const algoConfig = algoVersion.config as {
     defaultModels: {
@@ -92,17 +38,7 @@ export async function processAsk(job: Job, log: Logger): Promise<void> {
     };
   };
 
-  // 3. Mark result as processing
-  await db
-    .update(results)
-    .set({
-      status: "processing",
-      algorithmVersionId: algoVersion.id,
-      updatedAt: new Date(),
-    })
-    .where(eq(results.id, resultId));
-
-  // 4. Load team snapshot → theologian details
+  // Load team snapshot → theologian details
   if (!result.teamSnapshotId) {
     await failBoth(resultId, job.id, "No team snapshot linked to result");
     return;
@@ -124,7 +60,6 @@ export async function processAsk(job: Job, log: Logger): Promise<void> {
     tradition: string | null;
   }>;
 
-  // Load full theologian rows
   const theologianRows = await Promise.all(
     members.map(async (m) => {
       const [t] = await db
@@ -145,62 +80,49 @@ export async function processAsk(job: Job, log: Logger): Promise<void> {
 
   await logProgress(resultId, 0, "Starting deliberation...");
 
-  // 5. Per-theologian perspective generation (serial)
+  // Per-theologian perspective generation (parallel)
   const perspectiveModel = algoConfig.defaultModels.perspective.model;
-  const perspectives: AskPerspectiveEntry[] = [];
 
-  for (let i = 0; i < validTheologians.length; i++) {
-    const t = validTheologians[i];
-    const step = i + 1;
+  let stepCounter = 0;
+  const perspectives = await Promise.all(
+    validTheologians.map(async (t) => {
+      const step = ++stepCounter;
 
-    await logProgress(
-      resultId,
-      step,
-      `${t.name} is considering the question...`,
-      { theologianId: t.id }
-    );
+      await logProgress(
+        resultId,
+        step,
+        `${t.name} is considering the question...`,
+        { theologianId: t.id }
+      );
 
-    try {
-      const t0 = performance.now();
-      const response = await openai.chat.completions.create({
-        model: perspectiveModel,
-        messages: [
-          {
-            role: "system",
-            content: buildPerspectiveSystemPrompt({
-              name: t.name,
-              born: t.born,
-              died: t.died,
-              bio: t.bio,
-              voiceStyle: t.voiceStyle,
-              tradition: t.tradition,
-            }),
-          },
-          { role: "user", content: buildPerspectiveUserPrompt(question) },
-        ],
-        response_format: {
-          type: "json_schema",
-          json_schema: perspectiveJsonSchema,
-        },
-      });
-
-      const duration_ms = Math.round(performance.now() - t0);
-      const usage = response.usage;
-      log.info(
+      const response = await ai.chat(
         {
-          stage: "perspective",
-          theologian: t.name,
           model: perspectiveModel,
-          duration_ms,
-          ...(usage && { promptTokens: usage.prompt_tokens, completionTokens: usage.completion_tokens, totalTokens: usage.total_tokens }),
+          messages: [
+            {
+              role: "system",
+              content: buildPerspectiveSystemPrompt({
+                name: t.name,
+                born: t.born,
+                died: t.died,
+                bio: t.bio,
+                voiceStyle: t.voiceStyle,
+                tradition: t.tradition,
+              }),
+            },
+            { role: "user", content: buildPerspectiveUserPrompt(question) },
+          ],
+          response_format: {
+            type: "json_schema",
+            json_schema: perspectiveJsonSchema,
+          },
         },
-        "LLM perspective completed",
+        { label: `perspective:${t.name}`, log },
       );
 
       const content = response.choices[0]?.message?.content;
       if (!content) {
-        await failBoth(resultId, job.id, `Empty response for ${t.name}`);
-        return;
+        throw new Error(`Empty response for ${t.name}`);
       }
 
       const parsed: LLMPerspectiveResponse = JSON.parse(content);
@@ -211,7 +133,7 @@ export async function processAsk(job: Job, log: Logger): Promise<void> {
           : `b. ${t.born}`
         : "";
 
-      perspectives.push({
+      return {
         theologian: {
           name: t.name,
           initials: t.initials ?? t.name.substring(0, 2).toUpperCase(),
@@ -222,29 +144,18 @@ export async function processAsk(job: Job, log: Logger): Promise<void> {
         perspective: parsed.perspective,
         keyThemes: parsed.key_themes,
         relevantWorks: parsed.relevant_works,
-      });
-    } catch (err) {
-      const msg =
-        err instanceof Error ? err.message : "Unknown perspective error";
-      await failBoth(
-        resultId,
-        job.id,
-        `Failed generating perspective for ${t.name}: ${msg}`
-      );
-      return;
-    }
-  }
+      } satisfies AskPerspectiveEntry;
+    }),
+  );
 
-  // 6. Synthesis call
+  // Synthesis call
   const synthesisStep = validTheologians.length + 1;
   await logProgress(resultId, synthesisStep, "Synthesizing perspectives...");
 
   const synthesisModel = algoConfig.defaultModels.synthesis.model;
 
-  let synthesis: LLMSynthesisResponse;
-  try {
-    const t0 = performance.now();
-    const response = await openai.chat.completions.create({
+  const synthResponse = await ai.chat(
+    {
       model: synthesisModel,
       messages: [
         { role: "system", content: buildSynthesisSystemPrompt() },
@@ -257,34 +168,19 @@ export async function processAsk(job: Job, log: Logger): Promise<void> {
         type: "json_schema",
         json_schema: synthesisJsonSchema,
       },
-    });
+    },
+    { label: "synthesis", log },
+  );
 
-    const duration_ms = Math.round(performance.now() - t0);
-    const usage = response.usage;
-    log.info(
-      {
-        stage: "synthesis",
-        model: synthesisModel,
-        duration_ms,
-        ...(usage && { promptTokens: usage.prompt_tokens, completionTokens: usage.completion_tokens, totalTokens: usage.total_tokens }),
-      },
-      "LLM synthesis completed",
-    );
-
-    const content = response.choices[0]?.message?.content;
-    if (!content) {
-      await failBoth(resultId, job.id, "Empty synthesis response");
-      return;
-    }
-
-    synthesis = JSON.parse(content);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : "Unknown synthesis error";
-    await failBoth(resultId, job.id, `Synthesis failed: ${msg}`);
+  const synthContent = synthResponse.choices[0]?.message?.content;
+  if (!synthContent) {
+    await failBoth(resultId, job.id, "Empty synthesis response");
     return;
   }
 
-  // 7. Build content and upload to S3
+  const synthesis: LLMSynthesisResponse = JSON.parse(synthContent);
+
+  // Build content and upload to S3
   const askContent: AskContent = {
     question,
     perspectives,
@@ -301,7 +197,7 @@ export async function processAsk(job: Job, log: Logger): Promise<void> {
 
   await uploadJson(contentKey, askContent);
 
-  // 8. Update result as completed
+  // Update result as completed
   const previewExcerpt =
     synthesis.comparison.length > 200
       ? synthesis.comparison.substring(0, 200) + "..."
@@ -325,4 +221,4 @@ export async function processAsk(job: Job, log: Logger): Promise<void> {
       updatedAt: now,
     })
     .where(eq(results.id, resultId));
-}
+});
