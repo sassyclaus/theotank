@@ -1,5 +1,6 @@
+import { useState } from "react";
 import { Link, useNavigate } from "react-router";
-import { ArrowLeft, Download, Share2, Link2 } from "lucide-react";
+import { ArrowLeft, Download, Share2, Link2, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TOOL_LABELS, TOOL_COLORS, TOOL_ICONS } from "@/data/mock-library";
 import { downloadPdf } from "@/lib/api";
@@ -16,6 +17,44 @@ export function ReportHeader({ result, resultId, pdfKey }: ReportHeaderProps) {
   const colors = TOOL_COLORS[result.tool];
   const Icon = TOOL_ICONS[result.tool];
   const actualId = resultId ?? result.id;
+  const [copied, setCopied] = useState(false);
+
+  const shareUrl = `${window.location.origin}/share/${actualId}`;
+
+  async function handleCopyLink() {
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Fallback for older browsers
+      const input = document.createElement("input");
+      input.value = shareUrl;
+      document.body.appendChild(input);
+      input.select();
+      document.execCommand("copy");
+      document.body.removeChild(input);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  }
+
+  async function handleShare() {
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: result.title,
+          text: `Check out this TheoTank result: ${result.title}`,
+          url: shareUrl,
+        });
+      } catch {
+        // User cancelled or share failed — fall back to copy
+        handleCopyLink();
+      }
+    } else {
+      handleCopyLink();
+    }
+  }
 
   return (
     <div className="mb-10">
@@ -64,13 +103,17 @@ export function ReportHeader({ result, resultId, pdfKey }: ReportHeaderProps) {
               <Download className="h-3.5 w-3.5" />
               PDF
             </Button>
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" onClick={handleShare}>
               <Share2 className="h-3.5 w-3.5" />
               Share
             </Button>
-            <Button variant="outline" size="sm">
-              <Link2 className="h-3.5 w-3.5" />
-              Copy Link
+            <Button variant="outline" size="sm" onClick={handleCopyLink}>
+              {copied ? (
+                <Check className="h-3.5 w-3.5" />
+              ) : (
+                <Link2 className="h-3.5 w-3.5" />
+              )}
+              {copied ? "Copied!" : "Copy Link"}
             </Button>
           </div>
         </div>

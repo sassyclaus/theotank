@@ -13,6 +13,7 @@ import Theologians from "@/pages/Theologians";
 import TheologianDetail from "@/pages/TheologianDetail";
 import Result from "@/pages/Result";
 import PdfGeneration from "@/pages/PdfGeneration";
+import SharedResult from "@/pages/SharedResult";
 import NotFound from "@/pages/NotFound";
 
 // Admin pages — lazy loaded for code splitting
@@ -57,6 +58,7 @@ export default function App() {
       <Routes>
         <Route element={<Layout />}>
           <Route index element={<Home />} />
+          <Route path="share/:id" element={<SharedResult />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
@@ -182,6 +184,7 @@ export default function App() {
         <Route path="library/:id" element={<Result />} />
         <Route path="theologians" element={<Theologians />} />
         <Route path="theologians/:slug" element={<TheologianDetail />} />
+        <Route path="share/:id" element={<SharedResult />} />
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>

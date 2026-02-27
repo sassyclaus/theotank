@@ -431,6 +431,17 @@ export const processPoll = withResultContext("poll", async (job: Job, ctx: Resul
 
   await uploadJson(contentKey, pollContent);
 
+  // Generate redacted public version for sharing (same schema, justifications removed)
+  const publicContent: PollContent = {
+    ...pollContent,
+    theologianSelections: pollContent.theologianSelections.map((s) => ({
+      ...s,
+      justification: "",
+    })),
+    errors: [],
+  };
+  await uploadJson(contentKey.replace(".json", ".public.json"), publicContent);
+
   // Update result as completed
   const previewExcerpt =
     summary.length > 200 ? summary.substring(0, 200) + "..." : summary;

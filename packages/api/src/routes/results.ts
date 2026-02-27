@@ -12,7 +12,7 @@ import {
   reviewFiles,
 } from "@theotank/rds/schema";
 import { eq, and, desc, asc, isNull } from "drizzle-orm";
-import { getObject, presignGetUrl } from "../lib/s3";
+import { presignGetUrl } from "../lib/s3";
 import { createSnapshot } from "../lib/team-helpers";
 import type { AppEnv } from "../lib/types";
 
@@ -326,7 +326,12 @@ app.get("/:id", async (c) => {
     return c.json({ error: "Result not found" }, 404);
   }
 
-  return c.json(row);
+  const contentUrl =
+    row.status === "completed" && row.contentKey
+      ? await presignGetUrl(row.contentKey, 300)
+      : null;
+
+  return c.json({ ...row, contentUrl });
 });
 
 // POST /api/results/:id/retry — retry a failed result
@@ -411,27 +416,6 @@ app.get("/:id/progress", async (c) => {
     .orderBy(asc(resultProgressLogs.step));
 
   return c.json(logs);
-});
-
-// GET /api/results/:id/content — proxy S3 content JSON
-app.get("/:id/content", async (c) => {
-  const resultId = c.req.param("id");
-  const db = getDb();
-
-  const [row] = await db
-    .select({ contentKey: results.contentKey, status: results.status })
-    .from(results)
-    .where(eq(results.id, resultId));
-
-  if (!row) {
-    return c.json({ error: "Result not found" }, 404);
-  }
-  if (row.status !== "completed" || !row.contentKey) {
-    return c.json({ error: "Content not available" }, 404);
-  }
-
-  const content = await getObject(row.contentKey);
-  return c.json(JSON.parse(content));
 });
 
 // POST /api/results/:id/pdf — create PDF generation job (idempotent)

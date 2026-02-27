@@ -197,6 +197,18 @@ export const processAsk = withResultContext("ask", async (job: Job, ctx: ResultC
 
   await uploadJson(contentKey, askContent);
 
+  // Generate redacted public version for sharing (same schema, theologian text stripped)
+  const publicContent: AskContent = {
+    ...askContent,
+    perspectives: askContent.perspectives.map((p) => ({
+      theologian: p.theologian,
+      perspective: "",
+      keyThemes: [],
+      relevantWorks: [],
+    })),
+  };
+  await uploadJson(contentKey.replace(".json", ".public.json"), publicContent);
+
   // Update result as completed
   const previewExcerpt =
     synthesis.comparison.length > 200

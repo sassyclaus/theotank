@@ -9,6 +9,7 @@ import teams from "./routes/teams";
 import results from "./routes/results";
 import reviewFilesRoute from "./routes/review-files";
 import admin from "./routes/admin";
+import publicRoutes from "./routes/public";
 import type { AppEnv } from "./lib/types";
 
 const app = new Hono<AppEnv>();
@@ -35,6 +36,9 @@ app.onError((err, c) => {
 
 // Health check (unauthenticated)
 app.get("/health", (c) => c.json({ ok: true }));
+
+// Public routes (unauthenticated)
+app.route("/public", publicRoutes);
 
 // Authenticated API routes
 app.use("/api/*", clerkAuth);

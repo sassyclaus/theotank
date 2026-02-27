@@ -19,10 +19,7 @@ export default function Result() {
     status === "pending" || status === "processing";
 
   const { data: apiResult, isLoading } = useResult(id, true);
-  const { data: content } = useResultContent(
-    id,
-    apiResult?.status === "completed"
-  );
+  const { data: content } = useResultContent(id, apiResult?.contentUrl ?? undefined);
   const { data: logs } = useResultProgress(
     id,
     isActive(apiResult?.status)

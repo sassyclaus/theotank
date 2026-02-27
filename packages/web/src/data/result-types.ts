@@ -34,6 +34,7 @@ export interface ResultDetail {
   previewData: unknown;
   previewExcerpt: string | null;
   contentKey: string | null;
+  contentUrl: string | null;
   pdfKey: string | null;
   models: unknown;
   errorMessage: string | null;
@@ -148,6 +149,30 @@ export interface ResearchCitationItem {
   claimType: "paraphrase" | "quote" | "inference";
   confidence: "HIGH" | "MEDIUM" | "LOW";
   sources: ResearchCitationSource[];
+}
+
+// ── Public Sharing Types ─────────────────────────────────────────────
+
+// Public JSON uses the same schema as full JSON with redacted fields:
+//   Ask:    perspectives = []
+//   Poll:   theologianSelections[].justification = "", errors = []
+//   Review: grades = []
+// When fullContent fallback is used, the full JSON is served but the
+// frontend only renders the non-gated portions.
+
+export type PublicResultContent =
+  | AskContentResponse
+  | PollContentResponse
+  | ReviewContentResponse;
+
+export interface PublicResultMeta {
+  id: string;
+  toolType: "ask" | "poll" | "review";
+  title: string;
+  teamName: string | null;
+  createdAt: string;
+  contentUrl: string;
+  fullContent: boolean;
 }
 
 // ── PDF Status ──────────────────────────────────────────────────────

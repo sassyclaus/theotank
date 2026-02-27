@@ -3,6 +3,7 @@ import {
   PutObjectCommand,
   DeleteObjectCommand,
   GetObjectCommand,
+  HeadObjectCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
@@ -69,6 +70,25 @@ export async function getObject(key: string): Promise<string> {
   });
   const response = await getClient().send(command);
   return (await response.Body?.transformToString()) ?? "";
+}
+
+export async function headObject(key: string): Promise<boolean> {
+  try {
+    const command = new HeadObjectCommand({
+      Bucket: bucket,
+      Key: key,
+    });
+    await getClient().send(command);
+    return true;
+  } catch (err: unknown) {
+    if (
+      err instanceof Error &&
+      (err.name === "NotFound" || err.name === "NoSuchKey" || ("$metadata" in (err as any) && (err as any).$metadata?.httpStatusCode === 404))
+    ) {
+      return false;
+    }
+    throw err;
+  }
 }
 
 export function publicUrl(key: string): string {

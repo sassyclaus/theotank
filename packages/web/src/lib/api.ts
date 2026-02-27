@@ -16,6 +16,7 @@ import type {
   ReviewContentResponse,
   ResearchContentResponse,
   PdfStatusResponse,
+  PublicResultMeta,
 } from "@/data/result-types";
 import type {
   AdminNativeTeam,
@@ -88,8 +89,12 @@ export async function getResultProgress(id: string): Promise<ProgressLogEntry[]>
   return apiClient.get<ProgressLogEntry[]>(`/api/results/${id}/progress`);
 }
 
-export async function getResultContent(id: string): Promise<AskContentResponse | PollContentResponse | ReviewContentResponse | ResearchContentResponse> {
-  return apiClient.get<AskContentResponse | PollContentResponse | ReviewContentResponse | ResearchContentResponse>(`/api/results/${id}/content`);
+export async function getResultContent(url: string): Promise<AskContentResponse | PollContentResponse | ReviewContentResponse | ResearchContentResponse> {
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`Failed to fetch content: ${res.statusText}`);
+  }
+  return res.json();
 }
 
 export async function retryResult(
@@ -242,4 +247,31 @@ export async function uploadFileToPresignedUrl(
   if (!res.ok) {
     throw new Error(`Upload failed: ${res.statusText}`);
   }
+}
+
+// ── Public Sharing (unauthenticated) ────────────────────────────────
+
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:3001";
+
+export async function getPublicResultMeta(
+  id: string,
+): Promise<PublicResultMeta> {
+  const res = await fetch(`${API_BASE_URL}/public/results/${id}`);
+  if (!res.ok) {
+    throw new Error(
+      res.status === 404 ? "Result not available" : `Request failed: ${res.statusText}`,
+    );
+  }
+  return res.json();
+}
+
+export async function getPublicResultContent(
+  url: string,
+): Promise<AskContentResponse | PollContentResponse | ReviewContentResponse> {
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`Failed to fetch content: ${res.statusText}`);
+  }
+  return res.json();
 }

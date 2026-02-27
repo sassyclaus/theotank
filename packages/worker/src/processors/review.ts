@@ -227,6 +227,19 @@ export const processReview = withResultContext("review", async (job: Job, ctx: R
 
   await uploadJson(contentKey, reviewContent);
 
+  // Generate redacted public version for sharing (same schema, theologian text stripped)
+  const publicContent: ReviewContent = {
+    ...reviewContent,
+    grades: reviewContent.grades.map((g) => ({
+      theologian: g.theologian,
+      grade: "",
+      reaction: "",
+      strengths: [],
+      weaknesses: [],
+    })),
+  };
+  await uploadJson(contentKey.replace(".json", ".public.json"), publicContent);
+
   // Update result as completed
   const previewExcerpt =
     synthesis.summary.length > 200

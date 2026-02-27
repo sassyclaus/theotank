@@ -8,8 +8,10 @@ import {
   getResultContent,
   createPdfJob,
   getPdfStatus,
+  getPublicResultMeta,
+  getPublicResultContent,
 } from "@/lib/api";
-import type { CreateResultPayload } from "@/data/result-types";
+import type { CreateResultPayload, PublicResultMeta, PublicResultContent } from "@/data/result-types";
 
 const resultKeys = {
   all: ["results"] as const,
@@ -18,6 +20,8 @@ const resultKeys = {
   progress: (id: string) => [...resultKeys.all, "progress", id] as const,
   content: (id: string) => [...resultKeys.all, "content", id] as const,
   pdfStatus: (id: string) => [...resultKeys.all, "pdf-status", id] as const,
+  publicMeta: (id: string) => ["public-result", "meta", id] as const,
+  publicContent: (id: string) => ["public-result", "content", id] as const,
 };
 
 export function useCreateResult() {
@@ -52,7 +56,13 @@ export function useResult(id: string | undefined, polling = false) {
     queryKey: resultKeys.detail(id!),
     queryFn: () => getResult(id!),
     enabled: !!id,
-    refetchInterval: polling ? 3000 : false,
+    refetchInterval: polling
+      ? (query) => {
+          const status = query.state.data?.status;
+          if (status === "completed" || status === "failed") return false;
+          return 3000;
+        }
+      : false,
   });
 }
 
@@ -65,11 +75,12 @@ export function useResultProgress(id: string | undefined, polling = false) {
   });
 }
 
-export function useResultContent(id: string | undefined, enabled = false) {
+export function useResultContent(resultId: string | undefined, contentUrl: string | undefined) {
   return useQuery({
-    queryKey: resultKeys.content(id!),
-    queryFn: () => getResultContent(id!),
-    enabled: !!id && enabled,
+    queryKey: resultKeys.content(resultId!),
+    queryFn: () => getResultContent(contentUrl!),
+    enabled: !!resultId && !!contentUrl,
+    staleTime: Infinity,
   });
 }
 
@@ -91,4 +102,27 @@ export function usePdfStatus(id: string | undefined, polling = false) {
     enabled: !!id,
     refetchInterval: polling ? 2000 : false,
   });
+}
+
+export function usePublicResult(id: string | undefined) {
+  const metaQuery = useQuery({
+    queryKey: resultKeys.publicMeta(id!),
+    queryFn: () => getPublicResultMeta(id!),
+    enabled: !!id,
+    staleTime: 60_000,
+  });
+
+  const contentQuery = useQuery({
+    queryKey: resultKeys.publicContent(id!),
+    queryFn: () => getPublicResultContent(metaQuery.data!.contentUrl),
+    enabled: !!metaQuery.data?.contentUrl,
+    staleTime: 60_000,
+  });
+
+  return {
+    meta: metaQuery.data as PublicResultMeta | undefined,
+    content: contentQuery.data as PublicResultContent | undefined,
+    isLoading: metaQuery.isLoading || (metaQuery.isSuccess && contentQuery.isLoading),
+    error: metaQuery.error || contentQuery.error,
+  };
 }
