@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { getDb } from "@theotank/rds/db";
 import { results, teamSnapshots } from "@theotank/rds/schema";
 import { eq, sql } from "drizzle-orm";
-import { headObject, presignGetUrl } from "../lib/s3";
+import { headObject, presignGetUrl, publicAssetUrl } from "../lib/s3";
 import type { AppEnv } from "../lib/types";
 
 const app = new Hono<AppEnv>();
@@ -21,6 +21,7 @@ app.get("/results/:id", async (c) => {
       isPrivate: results.isPrivate,
       hiddenAt: results.hiddenAt,
       contentKey: results.contentKey,
+      shareImageKey: results.shareImageKey,
       createdAt: results.createdAt,
       teamName: teamSnapshots.name,
     })
@@ -68,6 +69,7 @@ app.get("/results/:id", async (c) => {
     createdAt: row.createdAt,
     contentUrl,
     fullContent: !hasPublicJson,
+    shareImageUrl: row.shareImageKey ? publicAssetUrl(row.shareImageKey) : null,
   });
 });
 

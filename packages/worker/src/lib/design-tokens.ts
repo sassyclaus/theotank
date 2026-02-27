@@ -1,0 +1,15 @@
+export const COLORS = {
+  bg: "#F8F6F1",
+  surface: "#EFECE4",
+  teal: "#1B6B6D",
+  tealLight: "#E6F0F0",
+  oxblood: "#7A2E2E",
+  oxbloodLight: "#F5EAEA",
+  gold: "#B8963E",
+  goldLight: "#F5F0E0",
+  textPrimary: "#1A1A1A",
+  textSecondary: "#6B6560",
+  sage: "#5A7A62",
+  terracotta: "#C4573A",
+  white: "#FFFFFF",
+};

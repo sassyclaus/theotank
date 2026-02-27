@@ -1,0 +1,1 @@
+ALTER TABLE "results" ADD COLUMN "share_image_key" text;

@@ -1,0 +1,97 @@
+---
+interface Props {
+  title: string;
+  description: string;
+  sampleLabel: string;
+  sampleContent: string;
+  sampleAttribution?: string;
+  slug: string;
+}
+
+const { title, description, sampleLabel, sampleContent, sampleAttribution, slug } = Astro.props;
+
+const isPoll = slug === "poll";
+const isReview = slug === "review";
+
+// Poll chart data for the visual mockup
+const pollData = [
+  { label: "Yes", pct: 62, color: "#1B6B6D" },
+  { label: "No", pct: 24, color: "#7A2E2E" },
+  { label: "Nuanced", pct: 14, color: "#B8963E" },
+];
+---
+
+<div class="rounded-xl border border-teal/20 bg-surface p-6 md:flex md:items-start md:gap-10 md:p-8">
+  <!-- Left: text -->
+  <div class="md:flex-1">
+    <h3 class="font-serif text-xl font-semibold text-teal md:text-2xl">
+      {title}
+    </h3>
+    <p class="mt-3 text-sm leading-relaxed text-text-secondary md:text-base">
+      {description}
+    </p>
+  </div>
+
+  <!-- Right: sample output -->
+  <div class="mt-6 md:mt-0 md:w-[340px] md:shrink-0">
+    <span class="text-xs font-medium uppercase tracking-wider text-text-secondary/70">
+      {sampleLabel}
+    </span>
+
+    {isPoll ? (
+      <!-- Poll chart mockup -->
+      <div class="mt-3 rounded-lg bg-bg p-4">
+        <p class="mb-4 font-serif text-sm font-medium text-text-primary italic">
+          "{sampleContent}"
+        </p>
+        <div class="space-y-2.5">
+          {pollData.map((bar) => (
+            <div class="flex items-center gap-3">
+              <span class="w-16 text-right text-xs text-text-secondary">
+                {bar.label}
+              </span>
+              <div class="h-5 flex-1 overflow-hidden rounded-full bg-surface">
+                <div
+                  class="flex h-full items-center rounded-full pl-2 text-xs font-medium text-white"
+                  style={`width: ${bar.pct}%; background-color: ${bar.color};`}
+                >
+                  {bar.pct}%
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+        <p class="mt-3 text-right text-[10px] text-text-secondary/50">
+          350+ theologians polled
+        </p>
+      </div>
+    ) : isReview ? (
+      <!-- Review grade mockup -->
+      <div class="mt-3 flex items-center gap-4 rounded-lg bg-bg p-4">
+        <div class="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg bg-teal/10">
+          <span class="font-serif text-3xl font-bold text-teal">
+            {sampleContent}
+          </span>
+        </div>
+        <div>
+          {sampleAttribution && (
+            <p class="text-xs text-text-secondary">{sampleAttribution}</p>
+          )}
+          <p class="mt-1 text-xs text-text-secondary/60">
+            Theological accuracy, exegetical rigor, pastoral tone
+          </p>
+        </div>
+      </div>
+    ) : (
+      <!-- Ask quote mockup -->
+      <div class="mt-3 rounded-lg border-l-2 border-teal/40 bg-bg px-4 py-3">
+        <p class="font-serif text-sm leading-relaxed text-text-primary italic">
+          {sampleContent}
+        </p>
+        {sampleAttribution && (
+          <p class="mt-2 text-xs text-text-secondary">{sampleAttribution}</p>
+        )}
+      </div>
+    )}
+  </div>
+</div>

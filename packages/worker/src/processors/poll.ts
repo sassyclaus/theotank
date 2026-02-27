@@ -11,6 +11,7 @@ import { logProgress } from "../progress";
 import { uploadJson } from "../s3";
 import { colorForTradition } from "../lib/tradition-colors";
 import { withResultContext, failBoth, type ResultContext } from "./scaffold";
+import { tryGenerateShareImage } from "../lib/generate-share-image";
 import {
   buildPollSystemPrompt,
   buildRecallPrompt,
@@ -109,8 +110,7 @@ export const processPoll = withResultContext("poll", async (job: Job, ctx: Resul
     .map((label, i) => `${String.fromCharCode(65 + i)}. ${label}`)
     .join("\n");
 
-  let step = 0;
-  await logProgress(resultId, step++, "Gathering your panel of theologians...");
+  await logProgress(resultId, "Gathering your panel of theologians...");
 
   // Per-theologian 3-pass loop (batched parallel)
   const recallModel = algoConfig.defaultModels.recall.model;
@@ -119,18 +119,15 @@ export const processPoll = withResultContext("poll", async (job: Job, ctx: Resul
 
   const successful: PollTheologianResult[] = [];
   const errors: PollTheologianError[] = [];
-  let stepCounter = step;
 
   for (let i = 0; i < validTheologians.length; i += POLL_BATCH_SIZE) {
     const batch = validTheologians.slice(i, i + POLL_BATCH_SIZE);
     await Promise.allSettled(
       batch.map(async (t) => {
-        const theologianStep = ++stepCounter;
         const positionLabel = `(${i + batch.indexOf(t) + 1}/${validTheologians.length})`;
 
         await logProgress(
           resultId,
-          theologianStep,
           `${t.name} is reflecting on the question... ${positionLabel}`,
           { theologianId: t.id },
         );
@@ -282,8 +279,6 @@ export const processPoll = withResultContext("poll", async (job: Job, ctx: Resul
     );
   }
 
-  step = stepCounter + 1;
-
   // Fail if zero theologians succeeded
   if (successful.length === 0) {
     await failBoth(
@@ -348,13 +343,11 @@ export const processPoll = withResultContext("poll", async (job: Job, ctx: Resul
   // Generate narrative summary
   await logProgress(
     resultId,
-    step++,
     `All votes are in. Tallying results across ${totalPolled} theologians...`,
   );
 
   await logProgress(
     resultId,
-    step++,
     "Writing a summary of the findings...",
   );
 
@@ -442,6 +435,13 @@ export const processPoll = withResultContext("poll", async (job: Job, ctx: Resul
   };
   await uploadJson(contentKey.replace(".json", ".public.json"), publicContent);
 
+  // Generate share image (non-fatal)
+  const shareImageKey = await tryGenerateShareImage(resultId, contentKey, "poll", pollContent, {
+    title: result.title,
+    teamName: snapshot.name ?? null,
+    theologianCount: validTheologians.length,
+  }, log);
+
   // Update result as completed
   const previewExcerpt =
     summary.length > 200 ? summary.substring(0, 200) + "..." : summary;
@@ -454,13 +454,14 @@ export const processPoll = withResultContext("poll", async (job: Job, ctx: Resul
         : 0,
   }));
 
-  await logProgress(resultId, step++, "Your poll results are ready!");
+  await logProgress(resultId, "Your poll results are ready!");
 
   await db
     .update(results)
     .set({
       status: "completed",
       contentKey,
+      shareImageKey,
       previewData: { type: "poll", bars: previewBars },
       previewExcerpt,
       models: {

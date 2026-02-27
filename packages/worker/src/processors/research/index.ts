@@ -52,10 +52,8 @@ export const processResearch = withResultContext("research", async (job: Job, ct
   }
   log.info({ editionCount: editionIds.length }, "Editions loaded");
 
-  let step = 0;
-
   // ── Stage 0.5: Interpretation ──────────────────────────────────
-  await logProgress(resultId, step, "Interpreting your question...");
+  await logProgress(resultId, "Interpreting your question...");
 
   const interpretation = await interpret(
     question,
@@ -67,10 +65,8 @@ export const processResearch = withResultContext("research", async (job: Job, ct
   const activeAngles = interpretation.angles.slice(0, rc.maxAngles);
   log.info({ angles: activeAngles.map((a) => a.label) }, "Angles identified");
 
-  step++;
   await logProgress(
     resultId,
-    step,
     `Identified ${activeAngles.length} research angle${activeAngles.length > 1 ? "s" : ""}...`,
     { angles: activeAngles.map((a) => a.label) },
   );
@@ -91,9 +87,8 @@ export const processResearch = withResultContext("research", async (job: Job, ct
     editionIds,
     algoConfig,
     log,
-    async (angleIndex, label) => {
-      step++;
-      await logProgress(resultId, step, `Searching corpus: ${label}...`);
+    async (_angleIndex, label) => {
+      await logProgress(resultId, `Searching corpus: ${label}...`);
     },
   );
 
@@ -105,17 +100,14 @@ export const processResearch = withResultContext("research", async (job: Job, ct
   );
 
   const workNames = new Set(selectedLoci.map((l) => l.workTitle));
-  step++;
   await logProgress(
     resultId,
-    step,
     `Found ${paragraphsArray.length} passages across ${workNames.size} work${workNames.size > 1 ? "s" : ""}...`,
     { lociCount: selectedLoci.length, totalParagraphs: paragraphsArray.length },
   );
 
   // ── Translation + Embedding Backfill ───────────────────────────
-  step++;
-  await logProgress(resultId, step, "Translating primary sources...");
+  await logProgress(resultId, "Translating primary sources...");
 
   const expandedItems = await translateAndExpand(
     selectedLoci,
@@ -125,8 +117,7 @@ export const processResearch = withResultContext("research", async (job: Job, ct
   );
 
   // ── Claim Extraction ───────────────────────────────────────────
-  step++;
-  await logProgress(resultId, step, "Extracting claims from evidence...");
+  await logProgress(resultId, "Extracting claims from evidence...");
 
   const rawClaims = await extractClaims(
     question,
@@ -137,8 +128,7 @@ export const processResearch = withResultContext("research", async (job: Job, ct
   );
 
   // ── Claim Verification ─────────────────────────────────────────
-  step++;
-  await logProgress(resultId, step, "Verifying claims against sources...");
+  await logProgress(resultId, "Verifying claims against sources...");
 
   const verifiedClaims = await verifyClaims(rawClaims, algoConfig, log);
 
@@ -152,8 +142,7 @@ export const processResearch = withResultContext("research", async (job: Job, ct
   }
 
   // ── Synthesis ──────────────────────────────────────────────────
-  step++;
-  await logProgress(resultId, step, "Writing citation-grounded response...");
+  await logProgress(resultId, "Writing citation-grounded response...");
 
   const synthesis = await synthesize(
     question,
@@ -185,8 +174,7 @@ export const processResearch = withResultContext("research", async (job: Job, ct
       ? synthesis.response_text.substring(0, 200) + "..."
       : synthesis.response_text;
 
-  step++;
-  await logProgress(resultId, step, "Your research is ready!");
+  await logProgress(resultId, "Your research is ready!");
 
   await db
     .update(results)

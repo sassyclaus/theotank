@@ -14,6 +14,7 @@ import {
 import { eq, and, desc, asc, isNull } from "drizzle-orm";
 import { presignGetUrl } from "../lib/s3";
 import { createSnapshot } from "../lib/team-helpers";
+import { deductCredit, CreditError } from "../lib/credits";
 import type { AppEnv } from "../lib/types";
 
 const app = new Hono<AppEnv>();
@@ -21,6 +22,7 @@ const app = new Hono<AppEnv>();
 // POST /api/results — create result + job in transaction
 app.post("/", async (c) => {
   const userId = c.get("userId");
+  const internalUserId = c.get("internalUserId");
   const body = await c.req.json<
     | { toolType: "ask"; teamId: string; question: string }
     | { toolType: "poll"; teamId: string; question: string; options: string[] }
@@ -87,6 +89,12 @@ app.post("/", async (c) => {
   let result;
   try {
     result = await db.transaction(async (tx) => {
+      // Deduct credit before proceeding
+      const hasCredit = await deductCredit(tx, internalUserId, body.toolType);
+      if (!hasCredit) {
+        throw new CreditError(body.toolType);
+      }
+
       // Look up active result type
       const [resultType] = await tx
         .select()
@@ -250,6 +258,12 @@ app.post("/", async (c) => {
       };
     });
   } catch (err) {
+    if (err instanceof CreditError) {
+      return c.json(
+        { error: "Insufficient credits", code: "INSUFFICIENT_CREDITS" },
+        402,
+      );
+    }
     log?.error({ err, userId, toolType: body.toolType }, "Result creation failed");
     throw err;
   }
@@ -413,7 +427,7 @@ app.get("/:id/progress", async (c) => {
     .select()
     .from(resultProgressLogs)
     .where(eq(resultProgressLogs.resultId, resultId))
-    .orderBy(asc(resultProgressLogs.step));
+    .orderBy(asc(resultProgressLogs.createdAt));
 
   return c.json(logs);
 });

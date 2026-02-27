@@ -1,0 +1,47 @@
+---
+import PortraitCard from "../cards/PortraitCard.astro";
+import { theologians, eras } from "../../data/theologians";
+---
+
+<section class="py-20 md:py-28">
+  <div class="mx-auto max-w-[800px] px-6">
+    <h2 class="text-center font-serif text-2xl font-semibold text-text-primary md:text-3xl">
+      350+ voices. 2,000 years. Every major tradition.
+    </h2>
+
+    <!-- Era band -->
+    <div class="mt-8 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-xs text-text-secondary md:text-sm">
+      {eras.map((era, i) => (
+        <>
+          <span>{era}</span>
+          {i < eras.length - 1 && (
+            <span class="text-text-secondary/30">·</span>
+          )}
+        </>
+      ))}
+    </div>
+
+    <!-- Portrait grid -->
+    <div class="relative mt-10">
+      <div class="grid grid-cols-3 gap-x-4 gap-y-6 sm:grid-cols-4 md:grid-cols-6">
+        {theologians.map((t) => (
+          <PortraitCard
+            name={t.name}
+            dates={t.dates}
+            initials={t.initials}
+            color={t.color}
+            portraitSrc={t.portraitSrc}
+          />
+        ))}
+      </div>
+
+      <!-- Fade overlay -->
+      <div class="pointer-events-none absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-bg to-transparent"></div>
+    </div>
+
+    <!-- CTA below fade -->
+    <p class="mt-4 text-center text-sm text-text-secondary">
+      …and 300+ more. <span class="font-medium text-gold">Join the waitlist</span> to explore the full roster.
+    </p>
+  </div>
+</section>

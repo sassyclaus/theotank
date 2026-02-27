@@ -4,6 +4,7 @@ import type { Logger } from "./logger";
 export type AppEnv = {
   Variables: {
     userId: string;
+    internalUserId: string;
     requestId: string;
     log: Logger;
   };

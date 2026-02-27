@@ -10,6 +10,7 @@ import results from "./routes/results";
 import reviewFilesRoute from "./routes/review-files";
 import admin from "./routes/admin";
 import publicRoutes from "./routes/public";
+import waitlistRoutes from "./routes/public/waitlist";
 import type { AppEnv } from "./lib/types";
 
 const app = new Hono<AppEnv>();
@@ -17,11 +18,15 @@ const app = new Hono<AppEnv>();
 // Structured request/response logging
 app.use("*", requestLogger);
 
-// CORS — allow Vite dev server
+// CORS — configurable origins for production; defaults to Vite dev server
+const allowedOrigins = process.env.CORS_ORIGINS
+  ? process.env.CORS_ORIGINS.split(",")
+  : ["http://localhost:5173", "http://localhost:4321"];
+
 app.use(
   "*",
   cors({
-    origin: ["http://localhost:5173"],
+    origin: allowedOrigins,
     allowHeaders: ["Content-Type", "Authorization"],
     allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   }),
@@ -39,6 +44,7 @@ app.get("/health", (c) => c.json({ ok: true }));
 
 // Public routes (unauthenticated)
 app.route("/public", publicRoutes);
+app.route("/public/waitlist", waitlistRoutes);
 
 // Authenticated API routes
 app.use("/api/*", clerkAuth);

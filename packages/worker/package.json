@@ -11,7 +11,9 @@
     "openai": "^4.85.0",
     "pdf-parse": "^1.1.1",
     "pdfkit": "^0.17.2",
-    "pino": "^10.3.1"
+    "pino": "^10.3.1",
+    "satori": "^0.19.2",
+    "sharp": "^0.34.5"
   },
   "devDependencies": {
     "@types/bun": "^1.2.0",

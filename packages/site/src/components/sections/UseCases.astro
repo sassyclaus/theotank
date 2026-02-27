@@ -1,0 +1,22 @@
+---
+import PersonaCard from "../cards/PersonaCard.astro";
+import { personas } from "../../data/personas";
+---
+
+<section class="bg-surface/50 py-20 md:py-28">
+  <div class="mx-auto max-w-[800px] px-6">
+    <h2 class="text-center font-serif text-2xl font-semibold text-text-primary md:text-3xl">
+      Built for people who take theology seriously.
+    </h2>
+
+    <div class="mt-12 grid gap-5 sm:grid-cols-2">
+      {personas.map((persona) => (
+        <PersonaCard
+          title={persona.title}
+          icon={persona.icon}
+          description={persona.description}
+        />
+      ))}
+    </div>
+  </div>
+</section>

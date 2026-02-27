@@ -7,6 +7,7 @@ import { logProgress } from "../progress";
 import { uploadJson } from "../s3";
 import { colorForTradition } from "../lib/tradition-colors";
 import { withResultContext, failBoth, type ResultContext } from "./scaffold";
+import { tryGenerateShareImage } from "../lib/generate-share-image";
 import {
   buildPerspectiveSystemPrompt,
   buildPerspectiveUserPrompt,
@@ -78,19 +79,15 @@ export const processAsk = withResultContext("ask", async (job: Job, ctx: ResultC
 
   const question = (result.inputPayload as { question: string }).question;
 
-  await logProgress(resultId, 0, "Starting deliberation...");
+  await logProgress(resultId, "Starting deliberation...");
 
   // Per-theologian perspective generation (parallel)
   const perspectiveModel = algoConfig.defaultModels.perspective.model;
 
-  let stepCounter = 0;
   const perspectives = await Promise.all(
     validTheologians.map(async (t) => {
-      const step = ++stepCounter;
-
       await logProgress(
         resultId,
-        step,
         `${t.name} is considering the question...`,
         { theologianId: t.id }
       );
@@ -149,8 +146,7 @@ export const processAsk = withResultContext("ask", async (job: Job, ctx: ResultC
   );
 
   // Synthesis call
-  const synthesisStep = validTheologians.length + 1;
-  await logProgress(resultId, synthesisStep, "Synthesizing perspectives...");
+  await logProgress(resultId, "Synthesizing perspectives...");
 
   const synthesisModel = algoConfig.defaultModels.synthesis.model;
 
@@ -209,20 +205,27 @@ export const processAsk = withResultContext("ask", async (job: Job, ctx: ResultC
   };
   await uploadJson(contentKey.replace(".json", ".public.json"), publicContent);
 
+  // Generate share image (non-fatal)
+  const shareImageKey = await tryGenerateShareImage(resultId, contentKey, "ask", askContent, {
+    title: result.title,
+    teamName: snapshot.name ?? null,
+    theologianCount: validTheologians.length,
+  }, log);
+
   // Update result as completed
   const previewExcerpt =
     synthesis.comparison.length > 200
       ? synthesis.comparison.substring(0, 200) + "..."
       : synthesis.comparison;
 
-  const finalStep = synthesisStep + 1;
-  await logProgress(resultId, finalStep, "Your result is ready!");
+  await logProgress(resultId, "Your result is ready!");
 
   await db
     .update(results)
     .set({
       status: "completed",
       contentKey,
+      shareImageKey,
       previewData: { type: "ask", conclusion: previewExcerpt },
       previewExcerpt,
       models: {

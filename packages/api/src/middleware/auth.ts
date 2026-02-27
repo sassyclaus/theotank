@@ -1,6 +1,7 @@
 import { createMiddleware } from "hono/factory";
 import { verifyToken } from "@clerk/backend";
 import type { AppEnv } from "../lib/types";
+import { ensureUser } from "../lib/ensure-user";
 
 export const clerkAuth = createMiddleware<AppEnv>(async (c, next) => {
   const authHeader = c.req.header("Authorization");
@@ -24,6 +25,10 @@ export const clerkAuth = createMiddleware<AppEnv>(async (c, next) => {
       secretKey,
     });
     c.set("userId", payload.sub);
+
+    const user = await ensureUser(payload.sub);
+    c.set("internalUserId", user.id);
+
     await next();
   } catch (err) {
     const log = c.get("log");

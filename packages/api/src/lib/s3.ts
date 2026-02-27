@@ -10,6 +10,8 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 const bucket = process.env.S3_BUCKET ?? "theotank";
 const publicBaseUrl =
   process.env.S3_PUBLIC_URL ?? "http://localhost:9000/theotank";
+const publicAssetBaseUrl =
+  process.env.S3_PUBLIC_ASSET_URL ?? "http://localhost:9000/theotank-public";
 
 let _client: S3Client | null = null;
 
@@ -93,4 +95,8 @@ export async function headObject(key: string): Promise<boolean> {
 
 export function publicUrl(key: string): string {
   return `${publicBaseUrl}/${key}`;
+}
+
+export function publicAssetUrl(key: string): string {
+  return `${publicAssetBaseUrl}/${key}`;
 }

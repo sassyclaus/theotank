@@ -31,6 +31,18 @@ import type {
   UpdateTheologianPayload,
   PresignedUploadResponse,
 } from "@/data/admin/theologian-types";
+import type {
+  AdminUserSummary,
+  AdminUserDetail,
+  UpdateCreditPayload,
+  CreditLedgerEntry,
+} from "@/data/admin/user-types";
+import type {
+  JobListResponse,
+  JobListParams,
+  JobDetail,
+  BulkActionResponse,
+} from "@/data/admin/job-types";
 
 export async function listTheologians(): Promise<TheologianProfile[]> {
   return apiClient.get<TheologianProfile[]>("/api/theologians");
@@ -247,6 +259,74 @@ export async function uploadFileToPresignedUrl(
   if (!res.ok) {
     throw new Error(`Upload failed: ${res.statusText}`);
   }
+}
+
+// ── Admin Users ──────────────────────────────────────────────────────
+
+export async function adminListUsers(): Promise<AdminUserSummary[]> {
+  return apiClient.get<AdminUserSummary[]>("/api/admin/users");
+}
+
+export async function adminGetUser(id: string): Promise<AdminUserDetail> {
+  return apiClient.get<AdminUserDetail>(`/api/admin/users/${id}`);
+}
+
+export async function adminUpdateUserCredits(
+  id: string,
+  payload: UpdateCreditPayload,
+): Promise<{ creditType: string; balance: number }> {
+  return apiClient.put(`/api/admin/users/${id}/credits`, payload);
+}
+
+export async function adminGetUserLedger(
+  id: string,
+  creditType?: string,
+): Promise<{ entries: CreditLedgerEntry[] }> {
+  const params = creditType ? `?creditType=${creditType}` : "";
+  return apiClient.get(`/api/admin/users/${id}/ledger${params}`);
+}
+
+// ── Admin Jobs ───────────────────────────────────────────────────────
+
+export async function adminListJobs(params?: JobListParams): Promise<JobListResponse> {
+  const query = new URLSearchParams();
+  if (params?.status) query.set("status", params.status);
+  if (params?.type) query.set("type", params.type);
+  if (params?.priority) query.set("priority", params.priority);
+  if (params?.search) query.set("search", params.search);
+  if (params?.limit) query.set("limit", String(params.limit));
+  if (params?.offset) query.set("offset", String(params.offset));
+  if (params?.sort) query.set("sort", params.sort);
+  if (params?.order) query.set("order", params.order);
+  const qs = query.toString();
+  return apiClient.get<JobListResponse>(`/api/admin/jobs${qs ? `?${qs}` : ""}`);
+}
+
+export async function adminGetJob(id: string): Promise<JobDetail> {
+  return apiClient.get<JobDetail>(`/api/admin/jobs/${id}`);
+}
+
+export async function adminRetryJob(id: string): Promise<{ ok: boolean }> {
+  return apiClient.post(`/api/admin/jobs/${id}/retry`);
+}
+
+export async function adminCancelJob(id: string): Promise<{ ok: boolean }> {
+  return apiClient.post(`/api/admin/jobs/${id}/cancel`);
+}
+
+export async function adminUpdateJobPriority(
+  id: string,
+  priority: string,
+): Promise<{ ok: boolean }> {
+  return apiClient.put(`/api/admin/jobs/${id}/priority`, { priority });
+}
+
+export async function adminBulkRetryJobs(): Promise<BulkActionResponse> {
+  return apiClient.post<BulkActionResponse>("/api/admin/jobs/bulk/retry");
+}
+
+export async function adminBulkCancelJobs(): Promise<BulkActionResponse> {
+  return apiClient.post<BulkActionResponse>("/api/admin/jobs/bulk/cancel");
 }
 
 // ── Public Sharing (unauthenticated) ────────────────────────────────

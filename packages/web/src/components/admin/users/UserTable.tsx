@@ -1,84 +1,57 @@
-import { AlertTriangle } from "lucide-react";
 import { DataTable } from "@/components/admin/ui/DataTable";
-import { Badge } from "@/components/admin/ui/Badge";
-import type { AdminUser } from "@/data/admin/mock-users";
+import type { AdminUserSummary } from "@/data/admin/user-types";
 
 interface UserTableProps {
-  users: AdminUser[];
-  onUserClick: (user: AdminUser) => void;
+  users: AdminUserSummary[];
+  onUserClick: (user: AdminUserSummary) => void;
 }
 
-const tierBadgeVariant: Record<AdminUser["tier"], "neutral" | "info" | "warning" | "success"> = {
-  free: "neutral",
-  base: "info",
-  pro: "warning",
-  scholar: "success",
-};
-
-const statusBadgeVariant: Record<AdminUser["status"], "success" | "danger" | "neutral"> = {
-  active: "success",
-  suspended: "danger",
-  churned: "neutral",
-};
+const CREDIT_TYPE_ORDER = ["ask", "poll", "review", "research"];
 
 export function UserTable({ users, onUserClick }: UserTableProps) {
   const columns = [
     {
       key: "user",
       header: "User",
-      render: (row: AdminUser) => (
+      render: (row: AdminUserSummary) => (
         <div>
-          <p className="font-medium text-gray-900">{row.name}</p>
-          <p className="text-xs text-gray-500">{row.email}</p>
+          <p className="font-medium text-gray-900">{row.name ?? "Unknown"}</p>
+          <p className="text-xs text-gray-500">{row.email ?? row.clerkId}</p>
         </div>
       ),
     },
     {
-      key: "tier",
-      header: "Tier",
-      render: (row: AdminUser) => (
-        <Badge variant={tierBadgeVariant[row.tier]}>
-          {row.tier.charAt(0).toUpperCase() + row.tier.slice(1)}
-        </Badge>
-      ),
-    },
-    {
-      key: "submissions",
-      header: "Submissions",
-      render: (row: AdminUser) => {
-        const atLimit = row.submissionsUsed >= row.submissionsLimit;
+      key: "credits",
+      header: "Credits",
+      render: (row: AdminUserSummary) => {
+        const parts = CREDIT_TYPE_ORDER
+          .filter((t) => t in row.credits)
+          .map((t) => `${t[0].toUpperCase() + t.slice(1)}: ${row.credits[t]}`);
         return (
-          <span className="inline-flex items-center gap-1.5">
-            <span className={atLimit ? "font-medium text-amber-700" : ""}>
-              {row.submissionsUsed}/{row.submissionsLimit}
-            </span>
-            {atLimit && (
-              <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
-            )}
+          <span className="text-xs text-gray-600">
+            {parts.length > 0 ? parts.join(" | ") : "—"}
           </span>
         );
       },
     },
     {
-      key: "signupDate",
-      header: "Signup",
-      render: (row: AdminUser) => (
+      key: "results",
+      header: "Results",
+      render: (row: AdminUserSummary) => (
+        <span className="text-gray-600">{row.resultCount}</span>
+      ),
+    },
+    {
+      key: "joined",
+      header: "Joined",
+      render: (row: AdminUserSummary) => (
         <span className="text-gray-600">
-          {new Date(row.signupDate).toLocaleDateString("en-US", {
+          {new Date(row.createdAt).toLocaleDateString("en-US", {
             month: "short",
             day: "numeric",
             year: "numeric",
           })}
         </span>
-      ),
-    },
-    {
-      key: "status",
-      header: "Status",
-      render: (row: AdminUser) => (
-        <Badge variant={statusBadgeVariant[row.status]}>
-          {row.status.charAt(0).toUpperCase() + row.status.slice(1)}
-        </Badge>
       ),
     },
   ];

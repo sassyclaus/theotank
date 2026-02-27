@@ -1,0 +1,58 @@
+---
+import WaitlistForm from "../islands/WaitlistForm";
+import SocialProofCounter from "../islands/SocialProofCounter";
+import { theologians } from "../../data/theologians";
+
+// Pick 12 theologians for the ambient mosaic
+const mosaicTheologians = theologians.filter((_, i) => i % 3 === 0).slice(0, 12);
+---
+
+<section class="relative overflow-hidden pt-20 pb-16 md:pt-28 md:pb-24">
+  <div class="mx-auto max-w-[800px] px-6 text-center">
+    <!-- Wordmark -->
+    <h1 class="font-serif text-4xl font-bold tracking-tight text-text-primary md:text-5xl">
+      TheoTank
+    </h1>
+
+    <div class="mx-auto mt-4 h-px w-16 bg-text-secondary/30"></div>
+
+    <!-- Headline -->
+    <p class="mt-8 font-serif text-3xl leading-snug font-medium text-text-primary md:text-[42px] md:leading-tight">
+      The greatest theological minds in history, convened around your question.
+    </p>
+
+    <!-- Subhead -->
+    <p class="mx-auto mt-6 max-w-[600px] text-lg leading-relaxed text-text-secondary">
+      Ask Augustine. Poll the Reformers. Get your sermon graded by Aquinas.
+      A theological think tank powered by 350+ voices across 2,000 years of
+      church history.
+    </p>
+
+    <!-- Email capture -->
+    <div class="mx-auto mt-10 max-w-md">
+      <WaitlistForm variant="hero" client:load />
+    </div>
+
+    <!-- Social proof counter -->
+    <div class="mt-5">
+      <SocialProofCounter client:visible />
+    </div>
+  </div>
+
+  <!-- Portrait mosaic band -->
+  <div class="mt-14 flex items-center justify-center gap-3 overflow-hidden px-4 md:gap-4">
+    {mosaicTheologians.map((t) => (
+      <div
+        class="flex h-14 w-14 shrink-0 items-center justify-center rounded-full opacity-60 md:h-16 md:w-16"
+        style={`background-color: ${t.color}20;`}
+      >
+        <span
+          class="text-sm font-semibold md:text-base"
+          style={`color: ${t.color};`}
+        >
+          {t.initials}
+        </span>
+      </div>
+    ))}
+  </div>
+</section>

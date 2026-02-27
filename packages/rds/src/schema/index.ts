@@ -5,3 +5,5 @@ export * from "./review-files";
 export * from "./results";
 export * from "./custom-types";
 export * from "./corpus";
+export * from "./users";
+export * from "./waitlist";

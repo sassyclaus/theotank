@@ -12,6 +12,7 @@ import { logProgress } from "../progress";
 import { downloadBuffer, uploadJson } from "../s3";
 import { colorForTradition } from "../lib/tradition-colors";
 import { withResultContext, failBoth, type ResultContext } from "./scaffold";
+import { tryGenerateShareImage } from "../lib/generate-share-image";
 import {
   buildReviewSystemPrompt,
   buildReviewUserPrompt,
@@ -98,19 +99,15 @@ export const processReview = withResultContext("review", async (job: Job, ctx: R
     return;
   }
 
-  await logProgress(resultId, 0, "Starting theological review...");
+  await logProgress(resultId, "Starting theological review...");
 
   // Per-theologian review (parallel)
   const reviewModel = algoConfig.defaultModels.review.model;
 
-  let stepCounter = 0;
   const grades = await Promise.all(
     validTheologians.map(async (t) => {
-      const step = ++stepCounter;
-
       await logProgress(
         resultId,
-        step,
         `${t.name} is reviewing the content...`,
         { theologianId: t.id }
       );
@@ -176,8 +173,7 @@ export const processReview = withResultContext("review", async (job: Job, ctx: R
   );
 
   // Synthesis call
-  const synthesisStep = validTheologians.length + 1;
-  await logProgress(resultId, synthesisStep, "Synthesizing reviews...");
+  await logProgress(resultId, "Synthesizing reviews...");
 
   const synthesisModel = algoConfig.defaultModels.synthesis.model;
 
@@ -240,20 +236,27 @@ export const processReview = withResultContext("review", async (job: Job, ctx: R
   };
   await uploadJson(contentKey.replace(".json", ".public.json"), publicContent);
 
+  // Generate share image (non-fatal)
+  const shareImageKey = await tryGenerateShareImage(resultId, contentKey, "review", reviewContent, {
+    title: result.title,
+    teamName: snapshot.name ?? null,
+    theologianCount: validTheologians.length,
+  }, log);
+
   // Update result as completed
   const previewExcerpt =
     synthesis.summary.length > 200
       ? synthesis.summary.substring(0, 200) + "..."
       : synthesis.summary;
 
-  const finalStep = synthesisStep + 1;
-  await logProgress(resultId, finalStep, "Your review is ready!");
+  await logProgress(resultId, "Your review is ready!");
 
   await db
     .update(results)
     .set({
       status: "completed",
       contentKey,
+      shareImageKey,
       previewData: {
         type: "review",
         overallGrade: synthesis.overall_grade,

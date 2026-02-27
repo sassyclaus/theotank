@@ -1,0 +1,38 @@
+---
+interface Props {
+  name: string;
+  dates: string;
+  initials: string;
+  color: string;
+  portraitSrc?: string;
+}
+
+const { name, dates, initials, color, portraitSrc } = Astro.props;
+---
+
+<div class="flex flex-col items-center gap-2 text-center">
+  {portraitSrc ? (
+    <img
+      src={portraitSrc}
+      alt={name}
+      class="h-16 w-16 rounded-full object-cover opacity-80 grayscale-[30%] md:h-20 md:w-20"
+      loading="lazy"
+    />
+  ) : (
+    <div
+      class="flex h-16 w-16 items-center justify-center rounded-full md:h-20 md:w-20"
+      style={`background-color: ${color}18;`}
+    >
+      <span
+        class="text-base font-semibold md:text-lg"
+        style={`color: ${color};`}
+      >
+        {initials}
+      </span>
+    </div>
+  )}
+  <div>
+    <p class="text-xs font-medium text-text-primary md:text-sm">{name}</p>
+    <p class="text-[10px] text-text-secondary md:text-xs">{dates}</p>
+  </div>
+</div>

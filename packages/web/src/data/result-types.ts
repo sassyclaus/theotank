@@ -56,7 +56,6 @@ export interface ResultDetail {
 export interface ProgressLogEntry {
   id: string;
   resultId: string;
-  step: number;
   message: string;
   metadata: Record<string, unknown> | null;
   createdAt: string;
@@ -173,6 +172,7 @@ export interface PublicResultMeta {
   createdAt: string;
   contentUrl: string;
   fullContent: boolean;
+  shareImageUrl: string | null;
 }
 
 // ── PDF Status ──────────────────────────────────────────────────────

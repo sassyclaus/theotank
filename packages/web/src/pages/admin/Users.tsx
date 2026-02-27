@@ -2,23 +2,32 @@ import { useState } from "react";
 import { useNavigate } from "react-router";
 import { SearchFilter } from "@/components/admin/ui/SearchFilter";
 import { UserTable } from "@/components/admin/users/UserTable";
-import { mockUsers } from "@/data/admin/mock-users";
-import type { AdminUser } from "@/data/admin/mock-users";
+import { useAdminUsers } from "@/hooks/useAdminUsers";
+import type { AdminUserSummary } from "@/data/admin/user-types";
 
 export default function Users() {
   const [search, setSearch] = useState("");
   const navigate = useNavigate();
+  const { data: users = [], isLoading } = useAdminUsers();
 
-  const filteredUsers = mockUsers.filter((user) => {
+  const filteredUsers = users.filter((user) => {
     const q = search.toLowerCase();
     return (
-      user.name.toLowerCase().includes(q) ||
-      user.email.toLowerCase().includes(q)
+      (user.name ?? "").toLowerCase().includes(q) ||
+      (user.email ?? "").toLowerCase().includes(q)
     );
   });
 
-  function handleUserClick(user: AdminUser) {
+  function handleUserClick(user: AdminUserSummary) {
     navigate(`/admin/users/${user.id}`);
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-24">
+        <p className="text-sm text-gray-500">Loading users...</p>
+      </div>
+    );
   }
 
   return (

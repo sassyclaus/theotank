@@ -8,6 +8,6 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true
   },
-  "references": [{ "path": "./packages/web" }, { "path": "./packages/rds" }, { "path": "./packages/api" }],
+  "references": [{ "path": "./packages/web" }, { "path": "./packages/rds" }, { "path": "./packages/api" }, { "path": "./packages/cron" }, { "path": "./packages/site" }],
   "files": []
 }

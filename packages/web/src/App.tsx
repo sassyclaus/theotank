@@ -34,6 +34,8 @@ const AdminCollections = lazy(() => import("@/pages/admin/Collections"));
 const AdminCollectionDetail = lazy(
   () => import("@/pages/admin/CollectionDetail"),
 );
+const AdminJobs = lazy(() => import("@/pages/admin/Jobs"));
+const AdminJobDetail = lazy(() => import("@/pages/admin/JobDetail"));
 const AdminSystem = lazy(() => import("@/pages/admin/System"));
 const AdminAuditLog = lazy(() => import("@/pages/admin/AuditLog"));
 
@@ -154,6 +156,22 @@ export default function App() {
           element={
             <Suspense fallback={null}>
               <AdminCollectionDetail />
+            </Suspense>
+          }
+        />
+        <Route
+          path="jobs"
+          element={
+            <Suspense fallback={null}>
+              <AdminJobs />
+            </Suspense>
+          }
+        />
+        <Route
+          path="jobs/:id"
+          element={
+            <Suspense fallback={null}>
+              <AdminJobDetail />
             </Suspense>
           }
         />

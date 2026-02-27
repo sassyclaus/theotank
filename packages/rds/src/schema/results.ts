@@ -115,6 +115,7 @@ export const results = pgTable(
     models: jsonb("models"),
     contentKey: text("content_key"),
     pdfKey: text("pdf_key"),
+    shareImageKey: text("share_image_key"),
     pdfJobId: uuid("pdf_job_id").references(() => jobs.id, {
       onDelete: "set null",
     }),
@@ -162,7 +163,6 @@ export const resultProgressLogs = pgTable(
     resultId: uuid("result_id")
       .notNull()
       .references(() => results.id, { onDelete: "cascade" }),
-    step: integer("step").notNull(),
     message: text("message").notNull(),
     metadata: jsonb("metadata"),
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -170,9 +170,9 @@ export const resultProgressLogs = pgTable(
       .notNull(),
   },
   (table) => [
-    index("result_progress_logs_result_id_step_idx").on(
+    index("result_progress_logs_result_id_created_at_idx").on(
       table.resultId,
-      table.step
+      table.createdAt
     ),
   ]
 );
