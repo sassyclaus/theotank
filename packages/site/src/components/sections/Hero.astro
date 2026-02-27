@@ -1,6 +1,6 @@
 ---
-import WaitlistForm from "../islands/WaitlistForm";
-import SocialProofCounter from "../islands/SocialProofCounter";
+// import WaitlistForm from "../islands/WaitlistForm";
+// import SocialProofCounter from "../islands/SocialProofCounter";
 import { theologians } from "../../data/theologians";
 
 // Pick 12 theologians for the ambient mosaic
@@ -18,7 +18,7 @@ const mosaicTheologians = theologians.filter((_, i) => i % 3 === 0).slice(0, 12)
 
     <!-- Headline -->
     <p class="mt-8 font-serif text-3xl leading-snug font-medium text-text-primary md:text-[42px] md:leading-tight">
-      The greatest theological minds in history, convened around your question.
+      The greatest theological minds in history, convened around your questions.
     </p>
 
     <!-- Subhead -->
@@ -28,14 +28,11 @@ const mosaicTheologians = theologians.filter((_, i) => i % 3 === 0).slice(0, 12)
       church history.
     </p>
 
-    <!-- Email capture -->
+    <!-- Email capture (disabled for demo) -->
     <div class="mx-auto mt-10 max-w-md">
-      <WaitlistForm variant="hero" client:load />
-    </div>
-
-    <!-- Social proof counter -->
-    <div class="mt-5">
-      <SocialProofCounter client:visible />
+      <p class="rounded-lg bg-surface px-5 py-3 text-sm font-medium text-text-secondary">
+        Waitlist opening soon
+      </p>
     </div>
   </div>
 
