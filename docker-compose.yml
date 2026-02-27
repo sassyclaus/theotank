@@ -67,7 +67,7 @@ services:
       S3_SECRET_KEY: minioadmin
       S3_BUCKET: theotank
       S3_PUBLIC_BUCKET: theotank-public
-      S3_PUBLIC_URL: http://minio:9000/theotank-public
+      S3_PUBLIC_ASSET_URL: http://minio:9000/theotank-public
       WORKER_ID: worker-docker-1
       WORKER_POLL_INTERVAL_MS: 2000
       WORKER_MAX_CONCURRENCY: 3

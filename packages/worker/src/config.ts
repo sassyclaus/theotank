@@ -9,7 +9,7 @@ export const config = {
   },
   s3Public: {
     bucket: process.env.S3_PUBLIC_BUCKET ?? "theotank-public",
-    url: process.env.S3_PUBLIC_URL ?? "http://localhost:9000/theotank-public",
+    url: process.env.S3_PUBLIC_ASSET_URL ?? "http://localhost:9000/theotank-public",
   },
   workerId: process.env.WORKER_ID ?? `worker-${process.pid}`,
   pollIntervalMs: Number(process.env.WORKER_POLL_INTERVAL_MS) || 2000,
