@@ -8,8 +8,7 @@ import {
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 const bucket = process.env.S3_BUCKET ?? "theotank";
-const publicBaseUrl =
-  process.env.S3_PUBLIC_URL ?? "http://localhost:9000/theotank";
+const publicBucket = process.env.S3_PUBLIC_BUCKET ?? "theotank-public";
 const publicAssetBaseUrl =
   process.env.S3_PUBLIC_ASSET_URL ?? "http://localhost:9000/theotank-public";
 
@@ -36,6 +35,18 @@ export async function presignPutUrl(
 ): Promise<string> {
   const command = new PutObjectCommand({
     Bucket: bucket,
+    Key: key,
+    ContentType: contentType,
+  });
+  return getSignedUrl(getClient(), command, { expiresIn: 300 });
+}
+
+export async function presignPublicPutUrl(
+  key: string,
+  contentType: string,
+): Promise<string> {
+  const command = new PutObjectCommand({
+    Bucket: publicBucket,
     Key: key,
     ContentType: contentType,
   });
@@ -91,10 +102,6 @@ export async function headObject(key: string): Promise<boolean> {
     }
     throw err;
   }
-}
-
-export function publicUrl(key: string): string {
-  return `${publicBaseUrl}/${key}`;
 }
 
 export function publicAssetUrl(key: string): string {

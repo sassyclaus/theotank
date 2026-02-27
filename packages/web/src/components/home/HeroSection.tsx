@@ -12,7 +12,7 @@ export function HeroSection() {
 
       <h1 className="mt-8 font-serif text-4xl font-bold leading-tight text-text-primary md:text-5xl lg:text-6xl">
         The greatest theological minds in history,{" "}
-        <span className="italic">convened around your question.</span>
+        <span className="italic">convened around your questions.</span>
       </h1>
 
       <div className="mt-10">

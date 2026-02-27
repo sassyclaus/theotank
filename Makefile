@@ -9,7 +9,7 @@ endif
 
 # Deploy API service to Railway
 deploy-api:
-	railway up --service api --detach
+	railway up --service API --detach
 
 # Deploy Worker service to Railway
 deploy-worker:
@@ -60,7 +60,7 @@ deploy-all:
 # Run Drizzle migrations against production database
 migrate-prod:
 	@echo "Running migrations against production..."
-ifndef DATABASE_PUBLIC_URL
-	$(error DATABASE_PUBLIC_URL is not set. Get it from Railway Postgres service variables.)
+ifndef PROD_DATABASE_PUBLIC_URL
+	$(error PROD_DATABASE_PUBLIC_URL is not set. Get it from Railway Postgres service variables.)
 endif
-	DATABASE_URL=$(DATABASE_PUBLIC_URL) bun run packages/rds/src/migrate.ts
+	DATABASE_URL=$(PROD_DATABASE_PUBLIC_URL) bun run packages/rds/src/migrate.ts

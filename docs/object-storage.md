@@ -1,31 +1,36 @@
 # Object Storage Layout
 
-Infrastructure: MinIO (S3-compatible), single bucket.
+Infrastructure: S3-compatible storage (Cloudflare R2 in production, MinIO locally). Two buckets.
 
-**Bucket:** `theotank` (configurable via `S3_BUCKET` env var)
+**Private bucket:** `theotank` (configurable via `S3_BUCKET`) — results JSON, review files, extracted text
+**Public bucket:** `theotank-public` (configurable via `S3_PUBLIC_BUCKET`) — theologian portraits, share/OG images
 
 ## Key Map
 
 ```
-theotank/
-├── portraits/{slug}.{ext}                                          # Theologian headshots
+theotank/                                                           # Private bucket
 ├── review-files/{userId}/{fileId}/
 │   ├── {fileName}                                                  # Original upload
 │   └── extracted/
 │       └── text.txt                                                # Extracted text
 └── results/{toolType}/{YYYY}/{MM}/{resultId}.json                  # Result content
+
+theotank-public/                                                    # Public bucket
+├── portraits/{slug}.{ext}                                          # Theologian headshots
+└── share/{resultId}.png                                            # Share/OG images
 ```
 
 ## Prefixes
 
-### `portraits/`
+### `portraits/` (public bucket)
 
-Theologian headshot images. Flat namespace keyed by slug.
+Theologian headshot images. Flat namespace keyed by slug. Stored in the public bucket.
 
 | Attribute | Value |
 |-----------|-------|
 | Key | `portraits/{slug}.(webp\|png\|jpg)` |
-| Access | Public (served via `publicUrl()`) |
+| Bucket | `theotank-public` |
+| Access | Public (served via `publicAssetUrl()`) |
 | Writer | Admin — browser uploads directly via presigned PUT URL |
 | Reader | Frontend `<img>` tags |
 | DB column | `theologians.imageKey` |
@@ -89,10 +94,11 @@ Date partitioning prevents flat-listing thousands of objects. The UUID result ID
 Two S3 client modules, one per package:
 
 **API** (`packages/api/src/lib/s3.ts`):
-- `presignPutUrl(key, contentType)` — 300-second PUT URL for browser uploads
-- `deleteObject(key)` — remove an object
-- `getObject(key)` — download as UTF-8 string
-- `publicUrl(key)` — `{S3_PUBLIC_URL}/{key}`
+- `presignPutUrl(key, contentType)` — 300-second PUT URL for private bucket uploads
+- `presignPublicPutUrl(key, contentType)` — 300-second PUT URL for public bucket uploads
+- `deleteObject(key)` — remove an object from the private bucket
+- `getObject(key)` — download as UTF-8 string from the private bucket
+- `publicAssetUrl(key)` — `{S3_PUBLIC_ASSET_URL}/{key}`
 
 **Worker** (`packages/worker/src/s3.ts`):
 - `uploadJson(key, data)` — serialize and upload JSON
@@ -112,8 +118,9 @@ Two S3 client modules, one per package:
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `S3_BUCKET` | `theotank` | Bucket name |
-| `S3_ENDPOINT` | `http://localhost:9000` | MinIO endpoint |
+| `S3_BUCKET` | `theotank` | Private bucket name |
+| `S3_PUBLIC_BUCKET` | `theotank-public` | Public bucket name |
+| `S3_ENDPOINT` | `http://localhost:9000` | S3-compatible endpoint |
 | `S3_ACCESS_KEY` | `minioadmin` | Access key |
 | `S3_SECRET_KEY` | `minioadmin` | Secret key |
-| `S3_PUBLIC_URL` | `http://localhost:9000/theotank` | Base URL for public objects |
+| `S3_PUBLIC_ASSET_URL` | `http://localhost:9000/theotank-public` | Base URL for public assets |

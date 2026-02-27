@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { getDb } from "@theotank/rds/db";
 import { theologians } from "@theotank/rds/schema";
 import { eq, asc } from "drizzle-orm";
-import { presignPutUrl, publicUrl } from "../../lib/s3";
+import { presignPublicPutUrl, publicAssetUrl } from "../../lib/s3";
 import type { AppEnv } from "../../lib/types";
 
 const app = new Hono<AppEnv>();
@@ -52,7 +52,7 @@ function shapeAdmin(row: TheologianRow) {
     voiceStyle: row.voiceStyle,
     keyWorks: row.keyWorks,
     imageKey: row.imageKey,
-    imageUrl: row.imageKey ? publicUrl(row.imageKey) : null,
+    imageUrl: row.imageKey ? publicAssetUrl(row.imageKey) : null,
     hasResearch: row.hasResearch,
     profileCompleteness: profileCompleteness(row),
     createdAt: row.createdAt.toISOString(),
@@ -220,7 +220,7 @@ app.post("/:id/upload-url", async (c) => {
 
   const ext = contentType.split("/")[1] === "jpeg" ? "jpg" : contentType.split("/")[1];
   const key = `portraits/${row.slug}.${ext}`;
-  const url = await presignPutUrl(key, contentType);
+  const url = await presignPublicPutUrl(key, contentType);
 
   return c.json({ url, key });
 });
