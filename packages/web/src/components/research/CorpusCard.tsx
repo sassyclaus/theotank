@@ -1,15 +1,18 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import type { Corpus } from "@/data/mock-research";
+import type { ResearchCorpus } from "@/lib/api";
 
 interface CorpusCardProps {
-  corpus: Corpus;
-  onSelect?: (corpus: Corpus) => void;
+  corpus: ResearchCorpus;
+  onSelect?: (corpus: ResearchCorpus) => void;
 }
 
 export function CorpusCard({ corpus, onSelect }: CorpusCardProps) {
   const isAvailable = corpus.available;
+  const cta = isAvailable
+    ? `Ask ${corpus.theologianName.split(" ").pop()} →`
+    : "Coming Soon";
 
   return (
     <Card
@@ -58,7 +61,7 @@ export function CorpusCard({ corpus, onSelect }: CorpusCardProps) {
           disabled={!isAvailable}
           onClick={isAvailable && onSelect ? () => onSelect(corpus) : undefined}
         >
-          {corpus.cta}
+          {cta}
         </Button>
       </CardContent>
     </Card>

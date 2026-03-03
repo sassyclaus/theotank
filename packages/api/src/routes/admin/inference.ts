@@ -1,8 +1,8 @@
 import { Hono } from "hono";
 import { getDb } from "@theotank/rds/db";
-import { results, users } from "@theotank/rds/schema";
-import { eq, and, gte, isNotNull, inArray } from "drizzle-orm";
-import { estimateCost, MODEL_PRICING } from "../../lib/model-pricing";
+import { inferenceLogs, users } from "@theotank/rds/schema";
+import { gte, inArray } from "drizzle-orm";
+import { estimateCost, MODEL_PRICING, WHISPER_COST_PER_MINUTE } from "../../lib/model-pricing";
 import type { AppEnv } from "../../lib/types";
 
 const app = new Hono<AppEnv>();
@@ -13,32 +13,27 @@ app.get("/", async (c) => {
   const period = Math.min(Number(c.req.query("period") || 30), 365);
   const windowStart = new Date(Date.now() - period * 24 * 60 * 60 * 1000);
 
-  // Fetch all completed results with token_usage in the window
+  // Fetch all inference logs in the window
   const rows = await db
-    .select({
-      id: results.id,
-      userId: results.userId,
-      toolType: results.toolType,
-      tokenUsage: results.tokenUsage,
-      completedAt: results.completedAt,
-    })
-    .from(results)
-    .where(
-      and(
-        eq(results.status, "completed"),
-        isNotNull(results.tokenUsage),
-        gte(results.completedAt, windowStart),
-      ),
-    );
+    .select()
+    .from(inferenceLogs)
+    .where(gte(inferenceLogs.createdAt, windowStart));
 
-  // Gather unique userIds (clerkIds) and resolve to user records
-  const clerkIds = [...new Set(rows.map((r) => r.userId))];
+  // Resolve unique userIds to user records
+  const userIds = [
+    ...new Set(
+      rows
+        .map((r) => (r.attribution as Record<string, string>)?.user_id)
+        .filter(Boolean) as string[],
+    ),
+  ];
+
   const userRows =
-    clerkIds.length > 0
+    userIds.length > 0
       ? await db
           .select({ clerkId: users.clerkId, email: users.email, name: users.name })
           .from(users)
-          .where(inArray(users.clerkId, clerkIds))
+          .where(inArray(users.clerkId, userIds))
       : [];
 
   const userMap = new Map(userRows.map((u) => [u.clerkId, u]));
@@ -71,62 +66,60 @@ app.get("/", async (c) => {
   const dailyMap = new Map<string, Map<string, { promptTokens: number; completionTokens: number; totalTokens: number }>>();
 
   for (const row of rows) {
-    const tu = row.tokenUsage as {
-      totalPromptTokens: number;
-      totalCompletionTokens: number;
-      totalTokens: number;
-      byModel: Record<string, { calls: number; promptTokens: number; completionTokens: number; totalTokens: number }>;
-    };
+    const attr = (row.attribution ?? {}) as Record<string, string>;
+    const toolType = attr.tool_type ?? row.source;
+    const userId = attr.user_id;
+    const rowTokens = row.promptTokens + row.completionTokens;
 
-    totalPromptTokens += tu.totalPromptTokens;
-    totalCompletionTokens += tu.totalCompletionTokens;
-    totalTokens += tu.totalTokens;
-
-    // Per-model cost for this result
-    let resultCost = 0;
-    for (const [model, stats] of Object.entries(tu.byModel)) {
-      const cost = estimateCost(model, stats.promptTokens, stats.completionTokens);
-      resultCost += cost;
-
-      const existing = byModelMap.get(model) ?? { calls: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0, estimatedCost: 0 };
-      existing.calls += stats.calls;
-      existing.promptTokens += stats.promptTokens;
-      existing.completionTokens += stats.completionTokens;
-      existing.totalTokens += stats.totalTokens;
-      existing.estimatedCost += cost;
-      byModelMap.set(model, existing);
+    // Calculate cost — Whisper uses duration, others use tokens
+    let rowCost: number;
+    if (row.model === "whisper-1" && row.durationSeconds) {
+      rowCost = WHISPER_COST_PER_MINUTE * (row.durationSeconds / 60);
+    } else {
+      rowCost = estimateCost(row.model, row.promptTokens, row.completionTokens);
     }
 
-    totalEstimatedCost += resultCost;
+    totalPromptTokens += row.promptTokens;
+    totalCompletionTokens += row.completionTokens;
+    totalTokens += rowTokens;
+    totalEstimatedCost += rowCost;
+
+    // By model
+    const modelEntry = byModelMap.get(row.model) ?? { calls: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0, estimatedCost: 0 };
+    modelEntry.calls++;
+    modelEntry.promptTokens += row.promptTokens;
+    modelEntry.completionTokens += row.completionTokens;
+    modelEntry.totalTokens += rowTokens;
+    modelEntry.estimatedCost += rowCost;
+    byModelMap.set(row.model, modelEntry);
 
     // By tool
-    const toolKey = row.toolType;
-    const toolEntry = byToolMap.get(toolKey) ?? { resultCount: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0, estimatedCost: 0 };
+    const toolEntry = byToolMap.get(toolType) ?? { resultCount: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0, estimatedCost: 0 };
     toolEntry.resultCount++;
-    toolEntry.promptTokens += tu.totalPromptTokens;
-    toolEntry.completionTokens += tu.totalCompletionTokens;
-    toolEntry.totalTokens += tu.totalTokens;
-    toolEntry.estimatedCost += resultCost;
-    byToolMap.set(toolKey, toolEntry);
+    toolEntry.promptTokens += row.promptTokens;
+    toolEntry.completionTokens += row.completionTokens;
+    toolEntry.totalTokens += rowTokens;
+    toolEntry.estimatedCost += rowCost;
+    byToolMap.set(toolType, toolEntry);
 
     // By user
-    const userEntry = byUserMap.get(row.userId) ?? { resultCount: 0, totalTokens: 0, estimatedCost: 0 };
-    userEntry.resultCount++;
-    userEntry.totalTokens += tu.totalTokens;
-    userEntry.estimatedCost += resultCost;
-    byUserMap.set(row.userId, userEntry);
+    if (userId) {
+      const userEntry = byUserMap.get(userId) ?? { resultCount: 0, totalTokens: 0, estimatedCost: 0 };
+      userEntry.resultCount++;
+      userEntry.totalTokens += rowTokens;
+      userEntry.estimatedCost += rowCost;
+      byUserMap.set(userId, userEntry);
+    }
 
     // Daily trend
-    if (row.completedAt) {
-      const dateKey = row.completedAt.toISOString().slice(0, 10);
-      if (!dailyMap.has(dateKey)) dailyMap.set(dateKey, new Map());
-      const dayTools = dailyMap.get(dateKey)!;
-      const dayEntry = dayTools.get(toolKey) ?? { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
-      dayEntry.promptTokens += tu.totalPromptTokens;
-      dayEntry.completionTokens += tu.totalCompletionTokens;
-      dayEntry.totalTokens += tu.totalTokens;
-      dayTools.set(toolKey, dayEntry);
-    }
+    const dateKey = row.createdAt.toISOString().slice(0, 10);
+    if (!dailyMap.has(dateKey)) dailyMap.set(dateKey, new Map());
+    const dayTools = dailyMap.get(dateKey)!;
+    const dayEntry = dayTools.get(toolType) ?? { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+    dayEntry.promptTokens += row.promptTokens;
+    dayEntry.completionTokens += row.completionTokens;
+    dayEntry.totalTokens += rowTokens;
+    dayTools.set(toolType, dayEntry);
   }
 
   const totalResults = rows.length;

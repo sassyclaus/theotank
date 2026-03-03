@@ -5,7 +5,7 @@ import { HowResearchDiffers } from "@/components/research/HowResearchDiffers";
 import { RecentResearchQueries } from "@/components/research/RecentResearchQueries";
 import { ResearchWorkspace } from "@/components/research/ResearchWorkspace";
 import { DeliberationView } from "@/components/roundtable/DeliberationView";
-import type { Corpus } from "@/data/mock-research";
+import type { ResearchCorpus } from "@/lib/api";
 
 type ResearchPhase =
   | { phase: "browse" }
@@ -15,7 +15,7 @@ type ResearchPhase =
 export default function Research() {
   const [state, setState] = useState<ResearchPhase>({ phase: "browse" });
 
-  const handleCorpusSelect = (corpus: Corpus) => {
+  const handleCorpusSelect = (corpus: ResearchCorpus) => {
     setState({
       phase: "compose",
       theologianSlug: corpus.theologianSlug,

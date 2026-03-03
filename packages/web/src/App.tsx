@@ -17,7 +17,6 @@ import SharedResult from "@/pages/SharedResult";
 import NotFound from "@/pages/NotFound";
 
 // Admin pages — lazy loaded for code splitting
-const AdminDashboard = lazy(() => import("@/pages/admin/Dashboard"));
 const AdminUsers = lazy(() => import("@/pages/admin/Users"));
 const AdminUserDetail = lazy(() => import("@/pages/admin/UserDetail"));
 const AdminContent = lazy(() => import("@/pages/admin/Content"));
@@ -29,7 +28,6 @@ const AdminTeams = lazy(() => import("@/pages/admin/Teams"));
 const AdminNativeTeamEditor = lazy(
   () => import("@/pages/admin/NativeTeamEditor"),
 );
-const AdminResearch = lazy(() => import("@/pages/admin/Research"));
 const AdminCollections = lazy(() => import("@/pages/admin/Collections"));
 const AdminCollectionDetail = lazy(
   () => import("@/pages/admin/CollectionDetail"),
@@ -37,7 +35,6 @@ const AdminCollectionDetail = lazy(
 const AdminJobs = lazy(() => import("@/pages/admin/Jobs"));
 const AdminJobDetail = lazy(() => import("@/pages/admin/JobDetail"));
 const AdminInference = lazy(() => import("@/pages/admin/Inference"));
-const AdminAuditLog = lazy(() => import("@/pages/admin/AuditLog"));
 
 export default function App() {
   const { isLoaded, isSignedIn, getToken } = useAuth();
@@ -70,15 +67,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="admin" element={<AdminLayout />}>
-        <Route index element={<Navigate to="dashboard" replace />} />
-        <Route
-          path="dashboard"
-          element={
-            <Suspense fallback={null}>
-              <AdminDashboard />
-            </Suspense>
-          }
-        />
+        <Route index element={<Navigate to="users" replace />} />
         <Route
           path="users"
           element={
@@ -136,14 +125,6 @@ export default function App() {
           }
         />
         <Route
-          path="research"
-          element={
-            <Suspense fallback={null}>
-              <AdminResearch />
-            </Suspense>
-          }
-        />
-        <Route
           path="collections"
           element={
             <Suspense fallback={null}>
@@ -180,14 +161,6 @@ export default function App() {
           element={
             <Suspense fallback={null}>
               <AdminInference />
-            </Suspense>
-          }
-        />
-        <Route
-          path="audit-log"
-          element={
-            <Suspense fallback={null}>
-              <AdminAuditLog />
             </Suspense>
           }
         />

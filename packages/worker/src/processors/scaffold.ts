@@ -102,7 +102,15 @@ export function withResultContext(
         const embedding = await ai.embed(
           searchText,
           "text-embedding-3-small",
-          { label: "result-search-embed", log },
+          {
+            label: "result-search-embed",
+            log,
+            attribution: {
+              result_id: resultId,
+              user_id: result.userId,
+              tool_type: toolType,
+            },
+          },
         );
         await db
           .update(results)

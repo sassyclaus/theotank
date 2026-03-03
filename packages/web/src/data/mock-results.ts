@@ -1,6 +1,12 @@
-import type { CitationRef } from "./mock-research";
-
 // ── Shared Types ────────────────────────────────────────────────────
+
+export interface CitationRef {
+  id: string;
+  marker: string;
+  source: string;
+  originalText: string;
+  translation: string;
+}
 
 export interface ResultTheologian {
   name: string;

@@ -18,6 +18,7 @@ export async function synthesize(
   expandedItems: ExpandedEvidenceItem[],
   model: string,
   log: Logger,
+  attribution?: Record<string, string>,
 ): Promise<LLMSynthesisResponse> {
   const response = await ai.chat(
     {
@@ -45,7 +46,7 @@ export async function synthesize(
         json_schema: synthesisJsonSchema,
       },
     },
-    { label: "synthesis", log },
+    { label: "synthesis", log, attribution },
   );
 
   const content = response.choices[0]?.message?.content;

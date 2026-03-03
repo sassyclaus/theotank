@@ -32,6 +32,7 @@ export async function translateAndExpand(
   nodeMeta: Map<string, { heading: string | null; canonicalRef: string | null; workTitle: string }>,
   algoConfig: ResearchAlgoConfig,
   log: Logger,
+  attribution?: Record<string, string>,
 ): Promise<ExpandedEvidenceItem[]> {
   const rc = algoConfig.retrieval;
 
@@ -83,7 +84,7 @@ export async function translateAndExpand(
               json_schema: translateJsonSchema,
             },
           },
-          { label: `translate:${paraShort}`, log },
+          { label: `translate:${paraShort}`, log, attribution },
         );
         const transContent = transResponse.choices[0]?.message?.content;
         if (!transContent) {
@@ -103,7 +104,7 @@ export async function translateAndExpand(
         const transEmbedding = await ai.embed(
           translation,
           algoConfig.embedding.model,
-          { label: `trans-store:${paraShort}`, log },
+          { label: `trans-store:${paraShort}`, log, attribution },
         );
         const sourceLabel = `llm_${algoConfig.defaultModels.translator.model}`;
         translationId = await storeTranslation(
@@ -125,7 +126,7 @@ export async function translateAndExpand(
         const transEmbedding = await ai.embed(
           translation,
           algoConfig.embedding.model,
-          { label: `trans-backfill:${paraShort}`, log },
+          { label: `trans-backfill:${paraShort}`, log, attribution },
         );
         await updateTranslationEmbedding(
           translationId,

@@ -8,7 +8,6 @@ import { uploadJson } from "../s3";
 import { colorForTradition } from "../lib/tradition-colors";
 import { withResultContext, failBoth, type ResultContext } from "./scaffold";
 import { tryGenerateShareImage } from "../lib/generate-share-image";
-import { TokenAccumulator } from "../lib/token-accumulator";
 import {
   buildPerspectiveSystemPrompt,
   buildPerspectiveUserPrompt,
@@ -38,7 +37,12 @@ export const processAsk = withResultContext("ask", async (job: Job, ctx: ResultC
   const db = getDb();
   const payload = job.payload as AskJobPayload;
   const { resultId } = payload;
-  const tokens = new TokenAccumulator();
+
+  const attribution = {
+    result_id: resultId,
+    user_id: result.userId,
+    tool_type: "ask",
+  };
 
   const algoConfig = algoVersion.config as {
     defaultModels: {
@@ -123,10 +127,8 @@ export const processAsk = withResultContext("ask", async (job: Job, ctx: ResultC
             json_schema: perspectiveJsonSchema,
           },
         },
-        { label: `perspective:${t.name}`, log },
+        { label: `perspective:${t.name}`, log, attribution },
       );
-
-      tokens.record(perspectiveModel, response.usage);
 
       const content = response.choices[0]?.message?.content;
       if (!content) {
@@ -215,10 +217,8 @@ export const processAsk = withResultContext("ask", async (job: Job, ctx: ResultC
               json_schema: reactionJsonSchema,
             },
           },
-          { label: `reaction:${currentTheologian.name}`, log },
+          { label: `reaction:${currentTheologian.name}`, log, attribution },
         );
-
-        tokens.record(reactionModel, response.usage);
 
         const content = response.choices[0]?.message?.content;
         if (!content) {
@@ -264,10 +264,8 @@ export const processAsk = withResultContext("ask", async (job: Job, ctx: ResultC
         json_schema: synthesisJsonSchema,
       },
     },
-    { label: "synthesis", log },
+    { label: "synthesis", log, attribution },
   );
-
-  tokens.record(synthesisModel, synthResponse.usage);
 
   const synthContent = synthResponse.choices[0]?.message?.content;
   if (!synthContent) {
@@ -335,7 +333,6 @@ export const processAsk = withResultContext("ask", async (job: Job, ctx: ResultC
         reaction: reactionModel,
         synthesis: synthesisModel,
       },
-      tokenUsage: tokens.toJSON(),
       completedAt: now,
       updatedAt: now,
     })

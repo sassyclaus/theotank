@@ -25,6 +25,7 @@ export async function extractClaims(
   expandedItems: ExpandedEvidenceItem[],
   algoConfig: ResearchAlgoConfig,
   log: Logger,
+  attribution?: Record<string, string>,
 ): Promise<RawClaim[]> {
   const cc = algoConfig.claims;
   const allClaims: RawClaim[] = [];
@@ -59,7 +60,7 @@ export async function extractClaims(
             json_schema: claimExtractionJsonSchema,
           },
         },
-        { label: `claims:${locusRef}`, log },
+        { label: `claims:${locusRef}`, log, attribution },
       );
 
       const content = response.choices[0]?.message?.content;

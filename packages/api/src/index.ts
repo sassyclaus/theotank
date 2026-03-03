@@ -9,6 +9,7 @@ import teams from "./routes/teams";
 import results from "./routes/results";
 import usage from "./routes/usage";
 import reviewFilesRoute from "./routes/review-files";
+import research from "./routes/research";
 import admin from "./routes/admin";
 import publicRoutes from "./routes/public";
 import waitlistRoutes from "./routes/public/waitlist";
@@ -56,6 +57,7 @@ app.route("/api/teams", teams);
 app.route("/api/results", results);
 app.route("/api/usage", usage);
 app.route("/api/review-files", reviewFilesRoute);
+app.route("/api/research", research);
 
 const port = Number(process.env.PORT) || 3001;
 logger.info({ port }, "API server listening");

@@ -16,6 +16,7 @@ export async function verifyClaims(
   allClaims: RawClaim[],
   algoConfig: ResearchAlgoConfig,
   log: Logger,
+  attribution?: Record<string, string>,
 ): Promise<VerifiedClaim[]> {
   log.info({ claimCount: allClaims.length }, "Claim verification starting");
 
@@ -50,7 +51,7 @@ export async function verifyClaims(
               json_schema: verificationJsonSchema,
             },
           },
-          { label: `verify:${paragraphId.slice(0, 8)}`, log },
+          { label: `verify:${paragraphId.slice(0, 8)}`, log, attribution },
         );
 
         const content = response.choices[0]?.message?.content;

@@ -1,6 +1,8 @@
 import OpenAI, { toFile } from "openai";
 import { config } from "../config";
 import { logger, type Logger } from "./logger";
+import { getDb } from "@theotank/rds/db";
+import { inferenceLogs } from "@theotank/rds/schema";
 
 // ── Semaphore ────────────────────────────────────────────────────────
 
@@ -42,11 +44,36 @@ interface CallStats {
 
 type CallType = "chat" | "embed" | "transcribe";
 
+// ── Inference Logging ────────────────────────────────────────────────
+
+async function logInference(data: {
+  source: string;
+  model: string;
+  promptTokens?: number;
+  completionTokens?: number;
+  durationSeconds?: number;
+  attribution: Record<string, string>;
+}): Promise<void> {
+  try {
+    const db = getDb();
+    await db.insert(inferenceLogs).values({
+      source: data.source,
+      model: data.model,
+      promptTokens: data.promptTokens ?? 0,
+      completionTokens: data.completionTokens ?? 0,
+      durationSeconds: data.durationSeconds,
+      attribution: data.attribution,
+    });
+  } catch { /* silent — never fail an AI call due to logging */ }
+}
+
 // ── AIClient ─────────────────────────────────────────────────────────
 
 export interface AIOpts {
   label?: string;
   log?: Logger;
+  attribution?: Record<string, string>;
+  durationSeconds?: number;
 }
 
 class AIClient {
@@ -141,6 +168,16 @@ class AIClient {
       const usage = response.usage;
       this.trackStats("chat", model, durationMs, usage);
 
+      if (opts?.attribution) {
+        logInference({
+          source: "worker",
+          model,
+          promptTokens: usage?.prompt_tokens,
+          completionTokens: usage?.completion_tokens,
+          attribution: opts.attribution,
+        });
+      }
+
       log.info(
         {
           label,
@@ -185,6 +222,15 @@ class AIClient {
       const durationMs = Math.round(performance.now() - t0);
       const usage = response.usage;
       this.trackStats("embed", model, durationMs, usage);
+
+      if (opts?.attribution) {
+        logInference({
+          source: "worker",
+          model,
+          promptTokens: usage?.prompt_tokens,
+          attribution: opts.attribution,
+        });
+      }
 
       log.debug(
         {
@@ -237,6 +283,15 @@ class AIClient {
 
       const durationMs = Math.round(performance.now() - t0);
       this.trackStats("transcribe", model, durationMs);
+
+      if (opts?.attribution) {
+        logInference({
+          source: "worker",
+          model,
+          durationSeconds: opts.durationSeconds,
+          attribution: opts.attribution,
+        });
+      }
 
       log.info(
         { label, model, duration_ms: durationMs },

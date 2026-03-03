@@ -16,6 +16,7 @@ export async function generateSearchPlan(
   theologian: { name: string; tradition: string | null },
   model: string,
   log: Logger,
+  attribution?: Record<string, string>,
 ): Promise<LLMSearchPlanResponse> {
   const response = await ai.chat(
     {
@@ -42,7 +43,7 @@ export async function generateSearchPlan(
       ],
       response_format: { type: "json_schema", json_schema: searchPlanJsonSchema },
     },
-    { label: "search-plan", log },
+    { label: "search-plan", log, attribution },
   );
 
   const content = response.choices[0]?.message?.content;

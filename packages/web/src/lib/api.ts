@@ -48,6 +48,26 @@ import type {
   BulkActionResponse,
 } from "@/data/admin/job-types";
 
+// ── Research ──────────────────────────────────────────────────────────
+
+export interface ResearchCorpus {
+  id: string;
+  theologianSlug: string;
+  theologianName: string;
+  initials: string | null;
+  color: string;
+  corpusName: string;
+  description: string;
+  available: boolean;
+  imageUrl: string | null;
+}
+
+export async function listResearchCorpora(): Promise<ResearchCorpus[]> {
+  return apiClient.get<ResearchCorpus[]>("/api/research/corpora");
+}
+
+// ── Theologians ───────────────────────────────────────────────────────
+
 export async function listTheologians(): Promise<TheologianProfile[]> {
   return apiClient.get<TheologianProfile[]>("/api/theologians");
 }

@@ -76,6 +76,33 @@ export async function cleanupChunks(paths: string[]): Promise<void> {
   }
 }
 
+/**
+ * Get the duration of an audio file in seconds using ffprobe.
+ */
+export async function getAudioDuration(filePath: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const proc = spawn("ffprobe", [
+      "-v", "error",
+      "-show_entries", "format=duration",
+      "-of", "csv=p=0",
+      filePath,
+    ], { stdio: ["pipe", "pipe", "pipe"] });
+    let stdout = "";
+    let stderr = "";
+    proc.stdout?.on("data", (d) => (stdout += d.toString()));
+    proc.stderr?.on("data", (d) => (stderr += d.toString()));
+    proc.on("close", (code) => {
+      if (code === 0) {
+        const seconds = parseFloat(stdout.trim());
+        resolve(Number.isFinite(seconds) ? seconds : 0);
+      } else {
+        reject(new Error(`ffprobe exited with ${code}: ${stderr.slice(-500)}`));
+      }
+    });
+    proc.on("error", reject);
+  });
+}
+
 function runFfmpeg(args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
     const proc = spawn("ffmpeg", args, { stdio: ["pipe", "pipe", "pipe"] });

@@ -1,16 +1,13 @@
 import { useLocation } from "react-router";
 
 const pageTitles: Record<string, string> = {
-  "/admin/dashboard": "Dashboard",
   "/admin/users": "Users",
   "/admin/content": "Content",
   "/admin/theologians": "Theologians",
   "/admin/teams": "Teams",
-  "/admin/research": "Research",
   "/admin/collections": "Collections",
   "/admin/jobs": "Jobs",
   "/admin/inference": "Inference",
-  "/admin/audit-log": "Audit Log",
 };
 
 function resolveTitle(pathname: string): string {

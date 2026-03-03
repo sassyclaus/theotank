@@ -42,6 +42,11 @@ export const processResearch = withResultContext("research", async (job: Job, ct
   }
 
   const question = (result.inputPayload as { question: string }).question;
+  const attribution = {
+    result_id: resultId,
+    user_id: result.userId,
+    tool_type: "research",
+  };
   log.info({ theologian: theologian.name, question: question.slice(0, 80) }, "Research context loaded");
 
   // Load edition IDs for this theologian
@@ -60,6 +65,7 @@ export const processResearch = withResultContext("research", async (job: Job, ct
     theologian,
     algoConfig.defaultModels.interpreter.model,
     log,
+    attribution,
   );
 
   const activeAngles = interpretation.angles.slice(0, rc.maxAngles);
@@ -78,6 +84,7 @@ export const processResearch = withResultContext("research", async (job: Job, ct
     theologian,
     algoConfig.defaultModels.search_planner.model,
     log,
+    attribution,
   );
 
   // ── Stage 2+: Per-Angle Retrieval ──────────────────────────────
@@ -87,6 +94,7 @@ export const processResearch = withResultContext("research", async (job: Job, ct
     editionIds,
     algoConfig,
     log,
+    attribution,
     async (_angleIndex, label) => {
       await logProgress(resultId, `Searching corpus: ${label}...`);
     },
@@ -114,6 +122,7 @@ export const processResearch = withResultContext("research", async (job: Job, ct
     nodeMeta,
     algoConfig,
     log,
+    attribution,
   );
 
   // ── Claim Extraction ───────────────────────────────────────────
@@ -125,12 +134,13 @@ export const processResearch = withResultContext("research", async (job: Job, ct
     expandedItems,
     algoConfig,
     log,
+    attribution,
   );
 
   // ── Claim Verification ─────────────────────────────────────────
   await logProgress(resultId, "Verifying claims against sources...");
 
-  const verifiedClaims = await verifyClaims(rawClaims, algoConfig, log);
+  const verifiedClaims = await verifyClaims(rawClaims, algoConfig, log, attribution);
 
   if (verifiedClaims.length === 0) {
     await failBoth(
@@ -151,6 +161,7 @@ export const processResearch = withResultContext("research", async (job: Job, ct
     expandedItems,
     algoConfig.defaultModels.synthesizer.model,
     log,
+    attribution,
   );
 
   // ── Build Citations & Upload ───────────────────────────────────

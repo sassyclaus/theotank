@@ -13,7 +13,6 @@ import { downloadBuffer, uploadJson } from "../s3";
 import { colorForTradition } from "../lib/tradition-colors";
 import { withResultContext, failBoth, type ResultContext } from "./scaffold";
 import { tryGenerateShareImage } from "../lib/generate-share-image";
-import { TokenAccumulator } from "../lib/token-accumulator";
 import {
   buildReviewSystemPrompt,
   buildReviewUserPrompt,
@@ -35,7 +34,12 @@ export const processReview = withResultContext("review", async (job: Job, ctx: R
   const db = getDb();
   const payload = job.payload as ReviewJobPayload;
   const { resultId } = payload;
-  const tokens = new TokenAccumulator();
+
+  const attribution = {
+    result_id: resultId,
+    user_id: result.userId,
+    tool_type: "review",
+  };
 
   const algoConfig = algoVersion.config as {
     defaultModels: {
@@ -154,10 +158,8 @@ export const processReview = withResultContext("review", async (job: Job, ctx: R
             json_schema: reviewJsonSchema,
           },
         },
-        { label: `review:${t.name}`, log },
+        { label: `review:${t.name}`, log, attribution },
       );
-
-      tokens.record(reviewModel, response.usage);
 
       const content = response.choices[0]?.message?.content;
       if (!content) {
@@ -214,10 +216,8 @@ export const processReview = withResultContext("review", async (job: Job, ctx: R
         json_schema: reviewSynthesisJsonSchema,
       },
     },
-    { label: "synthesis", log },
+    { label: "synthesis", log, attribution },
   );
-
-  tokens.record(synthesisModel, synthResponse.usage);
 
   const synthContent = synthResponse.choices[0]?.message?.content;
   if (!synthContent) {
@@ -285,7 +285,6 @@ export const processReview = withResultContext("review", async (job: Job, ctx: R
         review: reviewModel,
         synthesis: synthesisModel,
       },
-      tokenUsage: tokens.toJSON(),
       completedAt: now,
       updatedAt: now,
     })

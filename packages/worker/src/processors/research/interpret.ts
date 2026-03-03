@@ -15,6 +15,7 @@ export async function interpret(
   theologian: { name: string; tradition: string | null; born: number | null; died: number | null },
   model: string,
   log: Logger,
+  attribution?: Record<string, string>,
 ): Promise<InterpretationPlan> {
   const response = await ai.chat(
     {
@@ -33,7 +34,7 @@ export async function interpret(
       ],
       response_format: { type: "json_schema", json_schema: interpretJsonSchema },
     },
-    { label: "interpret", log },
+    { label: "interpret", log, attribution },
   );
 
   const content = response.choices[0]?.message?.content;

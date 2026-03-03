@@ -4,8 +4,9 @@ import { eq } from "drizzle-orm";
 import type { Job } from "@theotank/rds/schema";
 import type { Logger } from "../lib/logger";
 import { downloadBuffer, uploadText } from "../s3";
-import { extractAudio, splitIfNeeded, cleanupChunks } from "../lib/audio-chunker";
+import { extractAudio, splitIfNeeded, cleanupChunks, getAudioDuration } from "../lib/audio-chunker";
 import { transcribeChunks } from "../lib/whisper";
+import type { AIOpts } from "../lib/openai";
 import { writeFile, mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -57,7 +58,13 @@ export async function processReviewFile(job: Job, log: Logger): Promise<void> {
     extractedText = await extractTextByType(
       buffer,
       file.contentType,
-      file.fileName
+      file.fileName,
+      {
+        attribution: {
+          review_file_id: reviewFileId,
+          user_id: file.userId,
+        },
+      },
     );
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Unknown extraction error";
@@ -93,7 +100,8 @@ export async function processReviewFile(job: Job, log: Logger): Promise<void> {
 async function extractTextByType(
   buffer: Buffer,
   contentType: string,
-  fileName: string
+  fileName: string,
+  whisperOpts?: Pick<AIOpts, "attribution">,
 ): Promise<string> {
   // Text/plain — direct UTF-8
   if (contentType === "text/plain") {
@@ -113,12 +121,12 @@ async function extractTextByType(
 
   // Audio — transcribe directly
   if (contentType.startsWith("audio/")) {
-    return transcribeMedia(buffer, fileName);
+    return transcribeMedia(buffer, fileName, whisperOpts);
   }
 
   // Video — extract audio then transcribe
   if (contentType.startsWith("video/")) {
-    return transcribeMedia(buffer, fileName);
+    return transcribeMedia(buffer, fileName, whisperOpts);
   }
 
   throw new Error(`Unsupported content type: ${contentType}`);
@@ -153,7 +161,8 @@ async function extractPdfText(buffer: Buffer): Promise<string> {
 
 async function transcribeMedia(
   buffer: Buffer,
-  fileName: string
+  fileName: string,
+  whisperOpts?: Pick<AIOpts, "attribution">,
 ): Promise<string> {
   const tmpDir = await mkdtemp(join(tmpdir(), "review-media-"));
   const inputPath = join(tmpDir, fileName);
@@ -164,11 +173,22 @@ async function transcribeMedia(
     // Extract audio (converts video→mp3, or re-encodes audio→mp3)
     const audioPath = await extractAudio(inputPath);
 
+    // Measure audio duration for cost tracking
+    let durationSeconds: number | undefined;
+    try {
+      durationSeconds = Math.round(await getAudioDuration(audioPath));
+    } catch {
+      // Non-fatal — cost tracking will just lack duration
+    }
+
     // Split into chunks if needed
     const chunks = await splitIfNeeded(audioPath);
 
     // Transcribe all chunks
-    const text = await transcribeChunks(chunks);
+    const text = await transcribeChunks(chunks, {
+      ...whisperOpts,
+      durationSeconds,
+    });
 
     // Cleanup chunk files
     await cleanupChunks(chunks);

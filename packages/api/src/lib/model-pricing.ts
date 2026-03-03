@@ -3,13 +3,13 @@
  * Update when models or pricing change.
  */
 export const MODEL_PRICING: Record<string, { input: number; output: number }> = {
-  "gpt-4o-mini": { input: 0.15, output: 0.60 },
-  "gpt-4o": { input: 2.50, output: 10.00 },
-  "gpt-4.1-mini": { input: 0.40, output: 1.60 },
-  "gpt-4.1-nano": { input: 0.10, output: 0.40 },
-  "gpt-4.1": { input: 2.00, output: 8.00 },
-  "o4-mini": { input: 1.10, output: 4.40 },
+  "gpt-5-mini-2025-08-07": { input: 0.25, output: 2.00 },
+  "gpt-5.1":               { input: 1.25, output: 10.00 },
+  "text-embedding-3-small": { input: 0.02, output: 0.00 },
 };
+
+/** Whisper transcription cost per minute of audio (USD). */
+export const WHISPER_COST_PER_MINUTE = 0.006;
 
 const FALLBACK_PRICING = { input: 1.00, output: 4.00 };
 

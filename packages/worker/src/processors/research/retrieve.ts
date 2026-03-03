@@ -48,6 +48,7 @@ export async function retrieveEvidence(
   editionIds: string[],
   algoConfig: ResearchAlgoConfig,
   log: Logger,
+  attribution?: Record<string, string>,
   onAngleStart?: (angleIndex: number, label: string) => Promise<void>,
 ): Promise<Map<string, RetrievedParagraph>> {
   const rc = algoConfig.retrieval;
@@ -79,7 +80,7 @@ export async function retrieveEvidence(
     const angleEmbedding = await ai.embed(
       `${angle.interpretation} ${angle.theologicalConcepts.join(" ")}`,
       algoConfig.embedding.model,
-      { label: `angle-${ai_idx}`, log },
+      { label: `angle-${ai_idx}`, log, attribution },
     );
 
     // Run 5 retrieval paths in parallel

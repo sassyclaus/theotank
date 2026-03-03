@@ -1,5 +1,31 @@
 import { Card, CardContent } from "@/components/ui/card";
-import { citationExample } from "@/data/mock-research";
+
+const citationExample = {
+  question:
+    "How does Aquinas distinguish the analogy of proportionality from the analogy of attribution?",
+  responseExcerpt:
+    'Aquinas holds that when we predicate terms like "good" or "wise" of both God and creatures, we do so neither univocally nor equivocally, but analogically. In the analogy of attribution, a term is predicated primarily of one subject and secondarily of others by reference to it — as "healthy" is said of medicine only because it causes health in the animal [1]. In the analogy of proportionality, each analogate possesses the perfection intrinsically but according to its own mode of being, so that the creature\'s goodness is to the creature as God\'s goodness is to God [2].',
+  citations: [
+    {
+      id: "c1",
+      marker: "1",
+      source: "Summa Theologiae I, q. 13, a. 5, co.",
+      originalText:
+        "Dicendum quod in huiusmodi analogia, non est eadem ratio nominis, sicut est in univocis; nec totaliter diversa, sicut in aequivocis; sed nomen quod sic multipliciter dicitur, significat diversas proportiones ad aliquid unum.",
+      translation:
+        "It must be said that in this kind of analogy, the meaning of the term is not entirely the same, as in univocal predication; nor entirely different, as in equivocal predication; but the term used in these many ways signifies various proportions to some one thing.",
+    },
+    {
+      id: "c2",
+      marker: "2",
+      source: "De Veritate, q. 2, a. 11, co.",
+      originalText:
+        "Aliquando vero nomen commune imponitur ab aliqua proportione duorum ad duo diversa, sicut sanum dicitur de medicina et urina, inquantum utrumque habet ordinem et proportionem ad sanitatem animalis.",
+      translation:
+        "Sometimes, however, a common term is imposed from some proportion of two things to two different things, as 'healthy' is said of medicine and of urine insofar as each has an order and proportion to the health of the animal.",
+    },
+  ],
+};
 
 function renderWithCitations(text: string) {
   const parts = text.split(/(\[\d+\])/g);

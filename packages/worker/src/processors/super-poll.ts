@@ -12,7 +12,6 @@ import { uploadJson } from "../s3";
 import { colorForTradition } from "../lib/tradition-colors";
 import { withResultContext, failBoth, type ResultContext } from "./scaffold";
 import { tryGenerateShareImage } from "../lib/generate-share-image";
-import { TokenAccumulator } from "../lib/token-accumulator";
 import {
   buildPollSystemPrompt,
   buildRecallPrompt,
@@ -55,7 +54,12 @@ export const processSuperPoll = withResultContext("super_poll", async (job: Job,
   const db = getDb();
   const payload = job.payload as PollJobPayload;
   const { resultId } = payload;
-  const tokens = new TokenAccumulator();
+
+  const attribution = {
+    result_id: resultId,
+    user_id: result.userId,
+    tool_type: "super_poll",
+  };
 
   const algoConfig = algoVersion.config as {
     defaultModels: {
@@ -160,10 +164,8 @@ export const processSuperPoll = withResultContext("super_poll", async (job: Job,
                 { role: "user", content: buildRecallPrompt(t.name, question) },
               ],
             },
-            { label: `recall:${t.name}`, log },
+            { label: `recall:${t.name}`, log, attribution },
           );
-
-          tokens.record(recallModel, response.usage);
 
           const content = response.choices[0]?.message?.content;
           if (!content) {
@@ -197,10 +199,8 @@ export const processSuperPoll = withResultContext("super_poll", async (job: Job,
                 json_schema: critiqueJsonSchema,
               },
             },
-            { label: `critique:${t.name}`, log },
+            { label: `critique:${t.name}`, log, attribution },
           );
-
-          tokens.record(critiqueModel, response.usage);
 
           const content = response.choices[0]?.message?.content;
           if (content) {
@@ -245,10 +245,8 @@ export const processSuperPoll = withResultContext("super_poll", async (job: Job,
                 json_schema: pollSelectJsonSchema,
               },
             },
-            { label: `select:${t.name}`, log },
+            { label: `select:${t.name}`, log, attribution },
           );
-
-          tokens.record(selectModel, response.usage);
 
           const content = response.choices[0]?.message?.content;
           if (!content) {
@@ -402,10 +400,8 @@ export const processSuperPoll = withResultContext("super_poll", async (job: Job,
           json_schema: summaryJsonSchema,
         },
       },
-      { label: "summary", log },
+      { label: "summary", log, attribution },
     );
-
-    tokens.record(algoConfig.defaultModels.select.model, response.usage);
 
     const content = response.choices[0]?.message?.content;
     if (!content) throw new Error("Empty summary response");
@@ -490,7 +486,6 @@ export const processSuperPoll = withResultContext("super_poll", async (job: Job,
         critique: critiqueModel,
         select: selectModel,
       },
-      tokenUsage: tokens.toJSON(),
       completedAt: now,
       updatedAt: now,
     })
