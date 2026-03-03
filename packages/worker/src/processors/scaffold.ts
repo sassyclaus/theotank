@@ -3,6 +3,7 @@ import { results, algorithmVersions, jobs } from "@theotank/rds/schema";
 import { eq, and } from "drizzle-orm";
 import type { Job } from "@theotank/rds/schema";
 import type { Logger } from "../lib/logger";
+import { ai } from "../lib/openai";
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -32,7 +33,7 @@ export async function failBoth(
 
 // ── withResultContext ────────────────────────────────────────────────
 
-type ToolType = "ask" | "poll" | "review" | "research";
+type ToolType = "ask" | "poll" | "super_poll" | "review" | "research";
 
 export function withResultContext(
   toolType: ToolType,
@@ -87,6 +88,30 @@ export function withResultContext(
         err instanceof Error ? err.message : "Unknown processing error";
       await failBoth(resultId, job.id, message);
       throw err; // re-throw so processJob() logs timing + calls failJob() (harmless double-write)
+    }
+
+    // 5. Post-completion: embed question for library search (non-blocking)
+    try {
+      const payload = result.inputPayload as Record<string, unknown>;
+      const searchText =
+        (payload.question as string) ||
+        (payload.focusPrompt as string) ||
+        result.title;
+
+      if (searchText) {
+        const embedding = await ai.embed(
+          searchText,
+          "text-embedding-3-small",
+          { label: "result-search-embed", log },
+        );
+        await db
+          .update(results)
+          .set({ embeddedQuestion: embedding })
+          .where(eq(results.id, resultId));
+        log.info("Embedded question for search");
+      }
+    } catch (err) {
+      log.warn({ err }, "Failed to embed question for search (non-blocking)");
     }
   };
 }

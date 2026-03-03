@@ -14,7 +14,7 @@ export interface ModerationItem {
 export interface PublicLibraryItem {
   id: string;
   title: string;
-  tool: "ask" | "poll" | "review" | "research";
+  tool: "ask" | "poll" | "super_poll" | "review" | "research";
   views: number;
   unlocks: number;
   status: "public" | "removed" | "flagged";

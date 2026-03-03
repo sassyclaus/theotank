@@ -1,22 +1,37 @@
-import { Check, AlertTriangle } from "lucide-react";
+import { Check, AlertTriangle, Info } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { splitParagraphs } from "@/lib/utils";
 import type { ReviewResult, ResultTheologian } from "@/data/mock-results";
 
 interface ReviewResultBodyProps {
   result: ReviewResult;
+  wasTruncated?: boolean;
+  originalCharCount?: number;
 }
 
-export function ReviewResultBody({ result }: ReviewResultBodyProps) {
+export function ReviewResultBody({ result, wasTruncated, originalCharCount }: ReviewResultBodyProps) {
   return (
     <div className="space-y-8">
+      {wasTruncated && originalCharCount && (
+        <div className="flex items-start gap-2 rounded-lg border border-teal/20 bg-teal-light/50 px-4 py-3">
+          <Info className="mt-0.5 h-4 w-4 shrink-0 text-teal" />
+          <p className="text-sm text-text-secondary">
+            This document was trimmed to ~12 pages for review. The full document was{" "}
+            {originalCharCount.toLocaleString()} characters.
+          </p>
+        </div>
+      )}
+
       {/* Grade Hero */}
       <div className="py-8 text-center">
         <div className="font-serif text-7xl font-bold text-teal lg:text-8xl">
           {result.grade}
         </div>
-        <p className="mx-auto mt-4 max-w-2xl text-lg text-text-secondary">
-          {result.summary}
-        </p>
+        <div className="mx-auto mt-4 max-w-2xl space-y-3 text-lg text-text-secondary">
+          {splitParagraphs(result.summary).map((para, i) => (
+            <p key={i}>{para}</p>
+          ))}
+        </div>
       </div>
 
       {/* Panel Reactions */}
@@ -29,9 +44,11 @@ export function ReviewResultBody({ result }: ReviewResultBodyProps) {
                 theologian={reaction.theologian}
                 grade={reaction.grade}
               />
-              <p className="mt-4 text-base leading-relaxed text-text-primary">
-                {reaction.assessment}
-              </p>
+              <div className="mt-4 space-y-3 text-base leading-relaxed text-text-primary">
+                {splitParagraphs(reaction.assessment).map((para, i) => (
+                  <p key={i}>{para}</p>
+                ))}
+              </div>
 
               {reaction.strengths.length > 0 && (
                 <div className="mt-4">

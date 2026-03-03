@@ -1,16 +1,10 @@
+import { useMemo } from "react";
 import { Card, CardContent } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
 import type { ResearchContentResponse, ResearchCitationItem } from "@/data/result-types";
 
 interface ResearchResultBodyProps {
   content: ResearchContentResponse;
 }
-
-const confidenceColors: Record<string, string> = {
-  HIGH: "bg-sage/10 text-sage",
-  MEDIUM: "bg-gold/10 text-gold",
-  LOW: "bg-terracotta/10 text-terracotta",
-};
 
 const claimTypeBadge: Record<string, string> = {
   paraphrase: "Paraphrase",
@@ -19,6 +13,39 @@ const claimTypeBadge: Record<string, string> = {
 };
 
 export function ResearchResultBody({ content }: ResearchResultBodyProps) {
+  const { markerMap, orderedCitations } = useMemo(() => {
+    const citationById = new Map(
+      content.citations.map((c) => [c.marker, c]),
+    );
+    const map = new Map<string, string>();
+    const ordered: ResearchCitationItem[] = [];
+    let seq = 1;
+
+    // Scan text for markers in order of first appearance
+    const regex = /\[(\d+)\]/g;
+    let m: RegExpExecArray | null;
+    while ((m = regex.exec(content.responseText)) !== null) {
+      const orig = m[1];
+      if (map.has(orig)) continue; // already seen
+      const citation = citationById.get(orig);
+      if (!citation) continue; // orphan marker — will be stripped
+      const newNum = String(seq++);
+      map.set(orig, newNum);
+      ordered.push({ ...citation, marker: newNum });
+    }
+
+    // Append any citation objects not referenced in the text
+    for (const citation of content.citations) {
+      if (!map.has(citation.marker)) {
+        const newNum = String(seq++);
+        map.set(citation.marker, newNum);
+        ordered.push({ ...citation, marker: newNum });
+      }
+    }
+
+    return { markerMap: map, orderedCitations: ordered };
+  }, [content.responseText, content.citations]);
+
   return (
     <div className="space-y-8">
       {/* Response Text with inline citations */}
@@ -27,8 +54,8 @@ export function ResearchResultBody({ content }: ResearchResultBodyProps) {
           <span className="mb-4 inline-block rounded-full bg-oxblood/10 px-3 py-1 text-xs font-medium text-oxblood">
             {content.theologianName}
           </span>
-          <div className="text-base leading-relaxed text-text-primary">
-            {renderWithCitations(content.responseText)}
+          <div className="space-y-3 text-base leading-relaxed text-text-primary">
+            {renderWithCitations(content.responseText, markerMap)}
           </div>
         </CardContent>
       </Card>
@@ -40,12 +67,12 @@ export function ResearchResultBody({ content }: ResearchResultBodyProps) {
             Cited Sources
           </span>
           <span className="rounded-full bg-oxblood/10 px-2 py-0.5 text-xs font-medium text-oxblood">
-            {content.citations.length}
+            {orderedCitations.length}
           </span>
         </div>
 
         <div className="space-y-4">
-          {content.citations.map((citation) => (
+          {orderedCitations.map((citation) => (
             <CitationCard key={citation.id} citation={citation} />
           ))}
         </div>
@@ -63,26 +90,18 @@ export function ResearchResultBody({ content }: ResearchResultBodyProps) {
 
 function CitationCard({ citation }: { citation: ResearchCitationItem }) {
   return (
-    <Card id={`citation-${citation.marker}`}>
+    <Card id={`citation-${citation.marker}`} className="scroll-mt-20">
       <CardContent>
         <div className="flex items-start gap-3">
           <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-oxblood/10 text-xs font-bold text-oxblood">
             {citation.marker}
           </span>
           <div className="min-w-0 flex-1">
-            {/* Claim text + badges */}
+            {/* Claim text + badge */}
             <p className="font-medium text-text-primary">{citation.claimText}</p>
-            <div className="mt-1.5 flex flex-wrap items-center gap-2">
+            <div className="mt-1.5">
               <span className="rounded-full bg-surface px-2 py-0.5 text-xs font-medium text-text-secondary">
                 {claimTypeBadge[citation.claimType] ?? citation.claimType}
-              </span>
-              <span
-                className={cn(
-                  "rounded-full px-2 py-0.5 text-xs font-medium",
-                  confidenceColors[citation.confidence] ?? "bg-surface text-text-secondary",
-                )}
-              >
-                {citation.confidence}
               </span>
             </div>
 
@@ -111,21 +130,28 @@ function CitationCard({ citation }: { citation: ResearchCitationItem }) {
   );
 }
 
-function renderWithCitations(text: string) {
-  const parts = text.split(/(\[\d+\])/g);
-  return parts.map((part, i) => {
-    const match = part.match(/^\[(\d+)\]$/);
-    if (match) {
-      return (
-        <a
-          key={i}
-          href={`#citation-${match[1]}`}
-          className="cursor-pointer text-oxblood hover:text-oxblood/70"
-        >
-          <sup className="font-semibold">{part}</sup>
-        </a>
-      );
-    }
-    return <span key={i}>{part}</span>;
+function renderWithCitations(text: string, markerMap: Map<string, string>) {
+  // Split into paragraphs first, then process citations within each
+  const paragraphs = text.split(/\n+/).filter(Boolean);
+  return paragraphs.map((paragraph, pIdx) => {
+    const parts = paragraph.split(/(\[\d+\])/g);
+    const children = parts.map((part, i) => {
+      const match = part.match(/^\[(\d+)\]$/);
+      if (match) {
+        const newNum = markerMap.get(match[1]);
+        if (!newNum) return null;
+        return (
+          <a
+            key={`${pIdx}-${i}`}
+            href={`#citation-${newNum}`}
+            className="cursor-pointer text-oxblood hover:text-oxblood/70"
+          >
+            <sup className="font-semibold">[{newNum}]</sup>
+          </a>
+        );
+      }
+      return <span key={`${pIdx}-${i}`}>{part}</span>;
+    });
+    return <p key={pIdx}>{children}</p>;
   });
 }

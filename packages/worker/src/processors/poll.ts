@@ -12,6 +12,7 @@ import { uploadJson } from "../s3";
 import { colorForTradition } from "../lib/tradition-colors";
 import { withResultContext, failBoth, type ResultContext } from "./scaffold";
 import { tryGenerateShareImage } from "../lib/generate-share-image";
+import { TokenAccumulator } from "../lib/token-accumulator";
 import {
   buildPollSystemPrompt,
   buildRecallPrompt,
@@ -30,6 +31,7 @@ import type {
   PollTheologianResult,
   PollTheologianError,
   PollContent,
+  CritiqueMetrics,
 } from "../types/poll";
 
 // ── Era helpers (for summary prompt context only) ──────────────────
@@ -53,6 +55,7 @@ export const processPoll = withResultContext("poll", async (job: Job, ctx: Resul
   const db = getDb();
   const payload = job.payload as PollJobPayload;
   const { resultId } = payload;
+  const tokens = new TokenAccumulator();
 
   const algoConfig = algoVersion.config as {
     defaultModels: {
@@ -119,6 +122,12 @@ export const processPoll = withResultContext("poll", async (job: Job, ctx: Resul
 
   const successful: PollTheologianResult[] = [];
   const errors: PollTheologianError[] = [];
+  const critiqueMetrics: CritiqueMetrics = {
+    total: 0,
+    corrected: 0,
+    softFailures: 0,
+    strengthBreakdown: { none: 0, minor: 0, major: 0 },
+  };
 
   for (let i = 0; i < validTheologians.length; i += POLL_BATCH_SIZE) {
     const batch = validTheologians.slice(i, i + POLL_BATCH_SIZE);
@@ -155,6 +164,8 @@ export const processPoll = withResultContext("poll", async (job: Job, ctx: Resul
             { label: `recall:${t.name}`, log },
           );
 
+          tokens.record(recallModel, response.usage);
+
           const content = response.choices[0]?.message?.content;
           if (!content) {
             errors.push({ theologianName: t.name, error: "Empty recall response" });
@@ -190,16 +201,23 @@ export const processPoll = withResultContext("poll", async (job: Job, ctx: Resul
             { label: `critique:${t.name}`, log },
           );
 
+          tokens.record(critiqueModel, response.usage);
+
           const content = response.choices[0]?.message?.content;
           if (content) {
             const critique: LLMCritiqueResponse = JSON.parse(content);
+            critiqueMetrics.total++;
             if (!critique.is_accurate && critique.corrected_position) {
               position = critique.corrected_position;
+              critiqueMetrics.corrected++;
             }
             critiqueStrength = critique.critique_strength;
+            critiqueMetrics.strengthBreakdown[critiqueStrength]++;
           }
         } catch {
           // Critique soft failure — proceed with original recalled position
+          critiqueMetrics.total++;
+          critiqueMetrics.softFailures++;
         }
 
         // ── Pass 3: Select ──────────────────────────────────────
@@ -230,6 +248,8 @@ export const processPoll = withResultContext("poll", async (job: Job, ctx: Resul
             },
             { label: `select:${t.name}`, log },
           );
+
+          tokens.record(selectModel, response.usage);
 
           const content = response.choices[0]?.message?.content;
           if (!content) {
@@ -292,6 +312,13 @@ export const processPoll = withResultContext("poll", async (job: Job, ctx: Resul
   log.info(
     { successful: successful.length, errors: errors.length, total: validTheologians.length },
     "Theologian voting complete",
+  );
+
+  log.info({ critiqueMetrics }, "Critique pass summary");
+  await logProgress(
+    resultId,
+    `Critique pass: ${critiqueMetrics.corrected} of ${critiqueMetrics.total} positions were refined`,
+    { critiqueMetrics },
   );
 
   // Compute summary prompt context (counts + era breakdown)
@@ -386,6 +413,8 @@ export const processPoll = withResultContext("poll", async (job: Job, ctx: Resul
       { label: "summary", log },
     );
 
+    tokens.record(algoConfig.defaultModels.select.model, response.usage);
+
     const content = response.choices[0]?.message?.content;
     if (!content) throw new Error("Empty summary response");
     const parsed = JSON.parse(content) as { summary: string };
@@ -404,6 +433,7 @@ export const processPoll = withResultContext("poll", async (job: Job, ctx: Resul
     question,
     optionLabels,
     summary,
+    critiqueMetrics,
     theologianSelections: successful.map((s) => ({
       theologian: {
         name: s.theologian.name,
@@ -469,6 +499,7 @@ export const processPoll = withResultContext("poll", async (job: Job, ctx: Resul
         critique: critiqueModel,
         select: selectModel,
       },
+      tokenUsage: tokens.toJSON(),
       completedAt: now,
       updatedAt: now,
     })

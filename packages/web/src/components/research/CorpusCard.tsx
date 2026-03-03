@@ -48,7 +48,7 @@ export function CorpusCard({ corpus, onSelect }: CorpusCardProps) {
 
         {isAvailable && (
           <p className="mb-4 text-xs text-text-secondary/70">
-            1 credit per query
+            Limited queries per month
           </p>
         )}
 

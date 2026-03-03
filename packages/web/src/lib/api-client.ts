@@ -5,6 +5,21 @@ interface RequestOptions extends Omit<RequestInit, "body"> {
   body?: unknown;
 }
 
+export class ApiError extends Error {
+  status: number;
+  code: string | null;
+  data: Record<string, unknown>;
+
+  constructor(status: number, body: Record<string, unknown>) {
+    const message = (body.error as string) || `Request failed: ${status}`;
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.code = (body.code as string) ?? null;
+    this.data = body;
+  }
+}
+
 class ApiClient {
   private getToken: (() => Promise<string | null>) | null = null;
   private signOutHandler: (() => void) | null = null;
@@ -36,8 +51,15 @@ class ApiClient {
       if (response.status === 401 && hadToken && this.signOutHandler) {
         this.signOutHandler();
       }
-      const error = await response.text();
-      throw new Error(error || `Request failed: ${response.statusText}`);
+      // Try to parse JSON error body
+      let errorBody: Record<string, unknown> = {};
+      try {
+        errorBody = await response.json();
+      } catch {
+        const text = await response.text();
+        errorBody = { error: text || `Request failed: ${response.statusText}` };
+      }
+      throw new ApiError(response.status, errorBody);
     }
 
     if (

@@ -32,10 +32,22 @@ export interface PollTheologianError {
   error: string;
 }
 
+export interface CritiqueMetrics {
+  total: number;
+  corrected: number;
+  softFailures: number;
+  strengthBreakdown: {
+    none: number;
+    minor: number;
+    major: number;
+  };
+}
+
 export interface PollContent {
   question: string;
   optionLabels: string[];
   summary: string;
+  critiqueMetrics?: CritiqueMetrics;
   theologianSelections: Array<{
     theologian: {
       name: string;

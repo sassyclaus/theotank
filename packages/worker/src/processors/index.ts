@@ -6,11 +6,13 @@ import { processPoll } from "./poll";
 import { processReviewFile } from "./review-file";
 import { processReview } from "./review";
 import { processResearch } from "./research";
+import { processSuperPoll } from "./super-poll";
 import { processPdf } from "./pdf";
 
 const processors: Record<string, (job: Job, log: Logger) => Promise<void>> = {
   ask: processAsk,
   poll: processPoll,
+  super_poll: processSuperPoll,
   review_file: processReviewFile,
   review: processReview,
   research: processResearch,

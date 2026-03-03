@@ -6,6 +6,7 @@
     "config": {
       "defaultModels": {
         "perspective": { "model": "gpt-5-mini-2025-08-07", "provider": "openai" },
+        "reaction": { "model": "gpt-5-mini-2025-08-07", "provider": "openai" },
         "synthesis": { "model": "gpt-5-mini-2025-08-07", "provider": "openai" }
       }
     },
@@ -15,6 +16,19 @@
     "toolType": "poll",
     "version": "1.0.0",
     "description": "Initial Poll algorithm — 3-pass recall/critique/select per theologian",
+    "config": {
+      "defaultModels": {
+        "recall": { "model": "gpt-5.1", "provider": "openai" },
+        "critique": { "model": "gpt-5-mini-2025-08-07", "provider": "openai" },
+        "select": { "model": "gpt-5-mini-2025-08-07", "provider": "openai" }
+      }
+    },
+    "isActive": true
+  },
+  {
+    "toolType": "super_poll",
+    "version": "1.0.0",
+    "description": "Platform-wide poll — full 3-pass recall/critique/select across all theologians",
     "config": {
       "defaultModels": {
         "recall": { "model": "gpt-5.1", "provider": "openai" },

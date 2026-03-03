@@ -138,6 +138,8 @@ function PreviewContent({ preview }: { preview: MyLibraryItem["preview"] }) {
       );
     case "poll":
       return <MiniBarChart bars={preview.bars} />;
+    case "super_poll":
+      return <MiniBarChart bars={preview.bars} />;
     case "review":
       return (
         <span className="inline-flex items-center rounded-md border border-teal/30 px-2.5 py-1 font-serif text-lg font-bold text-teal">

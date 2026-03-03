@@ -1,5 +1,12 @@
 {
   "env": {
     "PATH": "$HOME/.bun/bin:$PATH"
+  },
+  "permissions": {
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Bash(cat .env*)"
+    ]
   }
 }

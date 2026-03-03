@@ -38,7 +38,7 @@ export function buildReviewUserPrompt(
   return `A user has submitted the following content for your theological review:
 
 ---
-${text.slice(0, 12000)}
+${text.slice(0, 48000)}
 ---${focusLine}
 
 Provide your review of this content. Assign a letter grade (A+ through F), write a reaction (150–300 words), and list specific strengths and weaknesses.`;

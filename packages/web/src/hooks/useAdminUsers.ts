@@ -2,17 +2,19 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   adminListUsers,
   adminGetUser,
-  adminUpdateUserCredits,
-  adminGetUserLedger,
+  adminUpdateUserTier,
+  adminSetUsageOverride,
+  adminDeleteUsageOverride,
+  adminGetUsageHistory,
 } from "@/lib/api";
-import type { UpdateCreditPayload } from "@/data/admin/user-types";
+import type { UpdateTierPayload, SetUsageOverridePayload } from "@/data/admin/user-types";
 
 const adminUserKeys = {
   all: ["admin", "users"] as const,
   list: () => [...adminUserKeys.all, "list"] as const,
   detail: (id: string) => [...adminUserKeys.all, "detail", id] as const,
-  ledger: (id: string, creditType?: string) =>
-    [...adminUserKeys.all, "ledger", id, creditType ?? "all"] as const,
+  usageHistory: (id: string, toolType?: string) =>
+    [...adminUserKeys.all, "usage-history", id, toolType ?? "all"] as const,
 };
 
 export function useAdminUsers() {
@@ -30,29 +32,52 @@ export function useAdminUser(id: string) {
   });
 }
 
-export function useAdminUpdateCredits() {
+export function useAdminUpdateTier() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, payload }: { id: string; payload: UpdateCreditPayload }) =>
-      adminUpdateUserCredits(id, payload),
+    mutationFn: ({ id, payload }: { id: string; payload: UpdateTierPayload }) =>
+      adminUpdateUserTier(id, payload),
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: adminUserKeys.list() });
       queryClient.invalidateQueries({
         queryKey: adminUserKeys.detail(variables.id),
       });
+    },
+  });
+}
+
+export function useAdminSetUsageOverride() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: SetUsageOverridePayload }) =>
+      adminSetUsageOverride(id, payload),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: adminUserKeys.list() });
       queryClient.invalidateQueries({
-        queryKey: adminUserKeys.all,
-        predicate: (query) =>
-          query.queryKey[2] === "ledger" && query.queryKey[3] === variables.id,
+        queryKey: adminUserKeys.detail(variables.id),
       });
     },
   });
 }
 
-export function useAdminUserLedger(id: string, creditType?: string) {
+export function useAdminDeleteUsageOverride() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, toolType }: { id: string; toolType: string }) =>
+      adminDeleteUsageOverride(id, toolType),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: adminUserKeys.list() });
+      queryClient.invalidateQueries({
+        queryKey: adminUserKeys.detail(variables.id),
+      });
+    },
+  });
+}
+
+export function useAdminUsageHistory(id: string, toolType?: string) {
   return useQuery({
-    queryKey: adminUserKeys.ledger(id, creditType),
-    queryFn: () => adminGetUserLedger(id, creditType),
+    queryKey: adminUserKeys.usageHistory(id, toolType),
+    queryFn: () => adminGetUsageHistory(id, toolType),
     enabled: !!id,
   });
 }

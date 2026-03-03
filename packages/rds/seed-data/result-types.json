@@ -143,6 +143,118 @@
     "isActive": true
   },
   {
+    "kind": "super_poll",
+    "version": 1,
+    "description": "Super Poll result type — aggregated platform-wide poll with era/tradition breakdowns",
+    "contentSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "required": ["question", "optionLabels", "summary", "voteDistribution", "eraBreakdown", "traditionBreakdown", "sampledSelections", "totalRespondents", "errors"],
+      "properties": {
+        "question": { "type": "string" },
+        "optionLabels": { "type": "array", "items": { "type": "string" } },
+        "summary": { "type": "string" },
+        "voteDistribution": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["option", "count", "percentage"],
+            "properties": {
+              "option": { "type": "string" },
+              "count": { "type": "integer" },
+              "percentage": { "type": "number" }
+            }
+          }
+        },
+        "eraBreakdown": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["era", "votes"],
+            "properties": {
+              "era": { "type": "string" },
+              "votes": { "type": "object", "additionalProperties": { "type": "integer" } }
+            }
+          }
+        },
+        "traditionBreakdown": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["tradition", "votes"],
+            "properties": {
+              "tradition": { "type": "string" },
+              "votes": { "type": "object", "additionalProperties": { "type": "integer" } }
+            }
+          }
+        },
+        "sampledSelections": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["theologian", "selection", "justification"],
+            "properties": {
+              "theologian": {
+                "type": "object",
+                "required": ["name", "initials", "dates", "tradition"],
+                "properties": {
+                  "name": { "type": "string" },
+                  "initials": { "type": "string" },
+                  "dates": { "type": "string" },
+                  "tradition": { "type": "string" }
+                }
+              },
+              "selection": { "type": "string" },
+              "justification": { "type": "string" }
+            }
+          }
+        },
+        "totalRespondents": { "type": "integer" },
+        "errors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["theologianName", "error"],
+            "properties": {
+              "theologianName": { "type": "string" },
+              "error": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "previewSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "required": ["type", "bars", "totalRespondents"],
+      "properties": {
+        "type": { "const": "super_poll" },
+        "bars": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["label", "percentage"],
+            "properties": {
+              "label": { "type": "string" },
+              "percentage": { "type": "number" }
+            }
+          }
+        },
+        "totalRespondents": { "type": "integer" }
+      }
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "required": ["question", "options"],
+      "properties": {
+        "question": { "type": "string" },
+        "options": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "isActive": true
+  },
+  {
     "kind": "review",
     "version": 1,
     "description": "Initial Review result type — theologian assessments with grades and feedback",

@@ -1,13 +1,14 @@
 import { Hono } from "hono";
 import { getDb } from "@theotank/rds/db";
-import { users, creditBalances, creditLedger, results } from "@theotank/rds/schema";
-import { eq, desc, sql, and } from "drizzle-orm";
+import { users, usageLogs, usageOverrides, results } from "@theotank/rds/schema";
+import { eq, desc, sql, and, gte } from "drizzle-orm";
 import { createClerkClient } from "@clerk/backend";
+import { getUserUsageSummary } from "../../lib/usage-limits";
 import type { AppEnv } from "../../lib/types";
 
 const app = new Hono<AppEnv>();
 
-// GET /api/admin/users — list all users with credit balances
+// GET /api/admin/users — list all users with usage info
 app.get("/", async (c) => {
   const db = getDb();
 
@@ -20,14 +21,24 @@ app.get("/", async (c) => {
     return c.json([]);
   }
 
-  // Batch-fetch all credit balances
-  const allCredits = await db.select().from(creditBalances);
-  const creditsByUser = new Map<string, Record<string, number>>();
-  for (const cb of allCredits) {
-    if (!creditsByUser.has(cb.userId)) {
-      creditsByUser.set(cb.userId, {});
+  // Rolling 30-day usage counts per user per tool type
+  const windowStart = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const usageCounts = await db
+    .select({
+      userId: usageLogs.userId,
+      toolType: usageLogs.toolType,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(usageLogs)
+    .where(gte(usageLogs.createdAt, windowStart))
+    .groupBy(usageLogs.userId, usageLogs.toolType);
+
+  const usageByUser = new Map<string, Record<string, number>>();
+  for (const row of usageCounts) {
+    if (!usageByUser.has(row.userId)) {
+      usageByUser.set(row.userId, {});
     }
-    creditsByUser.get(cb.userId)![cb.creditType] = cb.balance;
+    usageByUser.get(row.userId)![row.toolType] = row.count;
   }
 
   // Count results per user (join on results.userId = users.clerkId)
@@ -50,7 +61,8 @@ app.get("/", async (c) => {
     email: u.email,
     name: u.name,
     imageUrl: u.imageUrl,
-    credits: creditsByUser.get(u.id) ?? {},
+    tier: u.tier,
+    usage: usageByUser.get(u.id) ?? {},
     resultCount: resultCountByClerkId.get(u.clerkId) ?? 0,
     createdAt: u.createdAt.toISOString(),
   }));
@@ -92,15 +104,8 @@ app.get("/:id", async (c) => {
     }
   }
 
-  // Credit balances
-  const balances = await db
-    .select()
-    .from(creditBalances)
-    .where(eq(creditBalances.userId, id));
-  const credits: Record<string, number> = {};
-  for (const b of balances) {
-    credits[b.creditType] = b.balance;
-  }
+  // Usage summary (includes tier, limits, overrides)
+  const usageSummary = await getUserUsageSummary(db, id);
 
   // Recent results
   const userResults = await db
@@ -122,7 +127,8 @@ app.get("/:id", async (c) => {
     email: user.email,
     name: user.name,
     imageUrl: user.imageUrl,
-    credits,
+    tier: user.tier,
+    usage: usageSummary.tools,
     results: userResults.map((r) => ({
       ...r,
       createdAt: r.createdAt.toISOString(),
@@ -132,69 +138,99 @@ app.get("/:id", async (c) => {
   });
 });
 
-// PUT /api/admin/users/:id/credits — set credit balance for a type
-app.put("/:id/credits", async (c) => {
+// PUT /api/admin/users/:id/tier — update user tier
+app.put("/:id/tier", async (c) => {
   const id = c.req.param("id");
-  const adminClerkId = c.get("userId");
-  const body = await c.req.json<{ creditType: string; balance: number }>();
+  const body = await c.req.json<{ tier: string }>();
 
-  if (!body.creditType || typeof body.balance !== "number" || body.balance < 0) {
-    return c.json({ error: "creditType (string) and balance (>= 0) are required" }, 400);
+  if (!body.tier) {
+    return c.json({ error: "tier is required" }, 400);
   }
 
   const db = getDb();
 
-  // Verify user exists
   const [user] = await db.select({ id: users.id }).from(users).where(eq(users.id, id));
   if (!user) {
     return c.json({ error: "User not found" }, 404);
   }
 
-  // Read current balance
-  const [current] = await db
-    .select()
-    .from(creditBalances)
+  await db
+    .update(users)
+    .set({ tier: body.tier, updatedAt: new Date() })
+    .where(eq(users.id, id));
+
+  return c.json({ tier: body.tier });
+});
+
+// PUT /api/admin/users/:id/usage-override — upsert usage override
+app.put("/:id/usage-override", async (c) => {
+  const id = c.req.param("id");
+  const adminClerkId = c.get("userId");
+  const body = await c.req.json<{
+    toolType: string;
+    monthlyLimit: number;
+    reason?: string;
+    expiresAt?: string;
+  }>();
+
+  if (!body.toolType || typeof body.monthlyLimit !== "number" || body.monthlyLimit < 0) {
+    return c.json({ error: "toolType and monthlyLimit (>= 0) are required" }, 400);
+  }
+
+  const db = getDb();
+
+  const [user] = await db.select({ id: users.id }).from(users).where(eq(users.id, id));
+  if (!user) {
+    return c.json({ error: "User not found" }, 404);
+  }
+
+  const values = {
+    userId: id,
+    toolType: body.toolType,
+    monthlyLimit: body.monthlyLimit,
+    reason: body.reason ?? null,
+    adminId: adminClerkId,
+    expiresAt: body.expiresAt ? new Date(body.expiresAt) : null,
+  };
+
+  await db
+    .insert(usageOverrides)
+    .values(values)
+    .onConflictDoUpdate({
+      target: [usageOverrides.userId, usageOverrides.toolType],
+      set: {
+        monthlyLimit: body.monthlyLimit,
+        reason: body.reason ?? null,
+        adminId: adminClerkId,
+        expiresAt: body.expiresAt ? new Date(body.expiresAt) : null,
+      },
+    });
+
+  return c.json({ ok: true });
+});
+
+// DELETE /api/admin/users/:id/usage-override/:toolType — remove override
+app.delete("/:id/usage-override/:toolType", async (c) => {
+  const id = c.req.param("id");
+  const toolType = c.req.param("toolType");
+  const db = getDb();
+
+  await db
+    .delete(usageOverrides)
     .where(
       and(
-        eq(creditBalances.userId, id),
-        eq(creditBalances.creditType, body.creditType),
+        eq(usageOverrides.userId, id),
+        eq(usageOverrides.toolType, toolType),
       ),
     );
 
-  const previousBalance = current?.balance ?? 0;
-  const delta = body.balance - previousBalance;
-
-  // Upsert balance
-  await db
-    .insert(creditBalances)
-    .values({
-      userId: id,
-      creditType: body.creditType,
-      balance: body.balance,
-      updatedAt: new Date(),
-    })
-    .onConflictDoUpdate({
-      target: [creditBalances.userId, creditBalances.creditType],
-      set: { balance: body.balance, updatedAt: new Date() },
-    });
-
-  // Write ledger entry
-  await db.insert(creditLedger).values({
-    userId: id,
-    creditType: body.creditType,
-    delta,
-    balanceAfter: body.balance,
-    reason: "admin_adjustment",
-    adminId: adminClerkId,
-  });
-
-  return c.json({ creditType: body.creditType, balance: body.balance });
+  return c.json({ ok: true });
 });
 
-// GET /api/admin/users/:id/ledger — credit change history
-app.get("/:id/ledger", async (c) => {
+// GET /api/admin/users/:id/usage-history — usage log entries
+app.get("/:id/usage-history", async (c) => {
   const id = c.req.param("id");
-  const creditType = c.req.query("creditType");
+  const toolType = c.req.query("toolType");
   const db = getDb();
 
   // Verify user exists
@@ -203,20 +239,44 @@ app.get("/:id/ledger", async (c) => {
     return c.json({ error: "User not found" }, 404);
   }
 
-  const conditions = [eq(creditLedger.userId, id)];
-  if (creditType) {
-    conditions.push(eq(creditLedger.creditType, creditType));
+  const conditions = [eq(usageLogs.userId, id)];
+  if (toolType) {
+    conditions.push(eq(usageLogs.toolType, toolType));
   }
 
   const entries = await db
-    .select()
-    .from(creditLedger)
+    .select({
+      id: usageLogs.id,
+      toolType: usageLogs.toolType,
+      resultId: usageLogs.resultId,
+      teamSize: usageLogs.teamSize,
+      createdAt: usageLogs.createdAt,
+    })
+    .from(usageLogs)
     .where(and(...conditions))
-    .orderBy(desc(creditLedger.createdAt));
+    .orderBy(desc(usageLogs.createdAt))
+    .limit(100);
+
+  // Fetch result titles for linked entries
+  const resultIds = entries.filter((e) => e.resultId).map((e) => e.resultId!);
+  let resultTitles = new Map<string, string>();
+  if (resultIds.length > 0) {
+    const resultRows = await db
+      .select({ id: results.id, title: results.title })
+      .from(results)
+      .where(sql`${results.id} = ANY(${resultIds})`);
+    for (const r of resultRows) {
+      resultTitles.set(r.id, r.title);
+    }
+  }
 
   return c.json({
     entries: entries.map((e) => ({
-      ...e,
+      id: e.id,
+      toolType: e.toolType,
+      resultId: e.resultId,
+      resultTitle: e.resultId ? resultTitles.get(e.resultId) ?? null : null,
+      teamSize: e.teamSize,
       createdAt: e.createdAt.toISOString(),
     })),
   });

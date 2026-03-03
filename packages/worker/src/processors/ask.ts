@@ -8,11 +8,17 @@ import { uploadJson } from "../s3";
 import { colorForTradition } from "../lib/tradition-colors";
 import { withResultContext, failBoth, type ResultContext } from "./scaffold";
 import { tryGenerateShareImage } from "../lib/generate-share-image";
+import { TokenAccumulator } from "../lib/token-accumulator";
 import {
   buildPerspectiveSystemPrompt,
   buildPerspectiveUserPrompt,
   perspectiveJsonSchema,
 } from "../prompts/ask-perspective";
+import {
+  buildReactionSystemPrompt,
+  buildReactionUserPrompt,
+  reactionJsonSchema,
+} from "../prompts/ask-reaction";
 import {
   buildSynthesisSystemPrompt,
   buildSynthesisUserPrompt,
@@ -23,6 +29,7 @@ import type {
   AskPerspectiveEntry,
   AskContent,
   LLMPerspectiveResponse,
+  LLMReactionResponse,
   LLMSynthesisResponse,
 } from "../types/ask";
 
@@ -31,10 +38,12 @@ export const processAsk = withResultContext("ask", async (job: Job, ctx: ResultC
   const db = getDb();
   const payload = job.payload as AskJobPayload;
   const { resultId } = payload;
+  const tokens = new TokenAccumulator();
 
   const algoConfig = algoVersion.config as {
     defaultModels: {
       perspective: { model: string; provider: string };
+      reaction: { model: string; provider: string };
       synthesis: { model: string; provider: string };
     };
   };
@@ -117,6 +126,8 @@ export const processAsk = withResultContext("ask", async (job: Job, ctx: ResultC
         { label: `perspective:${t.name}`, log },
       );
 
+      tokens.record(perspectiveModel, response.usage);
+
       const content = response.choices[0]?.message?.content;
       if (!content) {
         throw new Error(`Empty response for ${t.name}`);
@@ -139,11 +150,95 @@ export const processAsk = withResultContext("ask", async (job: Job, ctx: ResultC
           color: colorForTradition(t.tradition),
         },
         perspective: parsed.perspective,
+        reaction: null as string | null,
         keyThemes: parsed.key_themes,
         relevantWorks: parsed.relevant_works,
       } satisfies AskPerspectiveEntry;
     }),
   );
+
+  // Per-theologian reactions (parallel)
+  const reactionModel = algoConfig.defaultModels.reaction?.model ?? algoConfig.defaultModels.perspective.model;
+
+  await logProgress(resultId, "Theologians are reacting to each other's views...");
+
+  const reactions = await Promise.all(
+    perspectives.map(async (currentPerspective) => {
+      const currentTheologian = validTheologians.find(
+        (t) => t.name === currentPerspective.theologian.name,
+      );
+      if (!currentTheologian) {
+        return { theologianName: currentPerspective.theologian.name, reaction: "" };
+      }
+
+      const otherPerspectives = perspectives
+        .filter((p) => p.theologian.name !== currentPerspective.theologian.name)
+        .map((p) => ({
+          name: p.theologian.name,
+          tradition: p.theologian.tradition,
+          perspective: p.perspective,
+        }));
+
+      await logProgress(
+        resultId,
+        `${currentTheologian.name} is reacting to the group's perspectives...`,
+        { theologianId: currentTheologian.id },
+      );
+
+      try {
+        const response = await ai.chat(
+          {
+            model: reactionModel,
+            messages: [
+              {
+                role: "system",
+                content: buildReactionSystemPrompt({
+                  name: currentTheologian.name,
+                  born: currentTheologian.born,
+                  died: currentTheologian.died,
+                  bio: currentTheologian.bio,
+                  voiceStyle: currentTheologian.voiceStyle,
+                  tradition: currentTheologian.tradition,
+                }),
+              },
+              {
+                role: "user",
+                content: buildReactionUserPrompt(
+                  question,
+                  currentTheologian.name,
+                  otherPerspectives,
+                ),
+              },
+            ],
+            response_format: {
+              type: "json_schema",
+              json_schema: reactionJsonSchema,
+            },
+          },
+          { label: `reaction:${currentTheologian.name}`, log },
+        );
+
+        tokens.record(reactionModel, response.usage);
+
+        const content = response.choices[0]?.message?.content;
+        if (!content) {
+          return { theologianName: currentTheologian.name, reaction: "" };
+        }
+
+        const parsed: LLMReactionResponse = JSON.parse(content);
+        return { theologianName: currentTheologian.name, reaction: parsed.reaction };
+      } catch (err) {
+        log.warn({ err, theologian: currentTheologian.name }, "Reaction call failed — continuing without reaction");
+        return { theologianName: currentTheologian.name, reaction: "" };
+      }
+    }),
+  );
+
+  // Attach reactions to perspective entries
+  for (const entry of perspectives) {
+    const match = reactions.find((r) => r.theologianName === entry.theologian.name);
+    entry.reaction = match?.reaction || null;
+  }
 
   // Synthesis call
   await logProgress(resultId, "Synthesizing perspectives...");
@@ -157,7 +252,11 @@ export const processAsk = withResultContext("ask", async (job: Job, ctx: ResultC
         { role: "system", content: buildSynthesisSystemPrompt() },
         {
           role: "user",
-          content: buildSynthesisUserPrompt(question, perspectives),
+          content: buildSynthesisUserPrompt(
+            question,
+            perspectives,
+            reactions.filter((r) => r.reaction),
+          ),
         },
       ],
       response_format: {
@@ -167,6 +266,8 @@ export const processAsk = withResultContext("ask", async (job: Job, ctx: ResultC
     },
     { label: "synthesis", log },
   );
+
+  tokens.record(synthesisModel, synthResponse.usage);
 
   const synthContent = synthResponse.choices[0]?.message?.content;
   if (!synthContent) {
@@ -199,6 +300,7 @@ export const processAsk = withResultContext("ask", async (job: Job, ctx: ResultC
     perspectives: askContent.perspectives.map((p) => ({
       theologian: p.theologian,
       perspective: "",
+      reaction: null,
       keyThemes: [],
       relevantWorks: [],
     })),
@@ -230,8 +332,10 @@ export const processAsk = withResultContext("ask", async (job: Job, ctx: ResultC
       previewExcerpt,
       models: {
         perspective: perspectiveModel,
+        reaction: reactionModel,
         synthesis: synthesisModel,
       },
+      tokenUsage: tokens.toJSON(),
       completedAt: now,
       updatedAt: now,
     })

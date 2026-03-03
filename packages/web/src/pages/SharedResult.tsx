@@ -49,7 +49,7 @@ export default function SharedResult() {
   const panelSize =
     meta.toolType === "ask"
       ? (content as AskContentResponse).perspectives.length
-      : meta.toolType === "poll"
+      : meta.toolType === "poll" || meta.toolType === "super_poll"
         ? (content as PollContentResponse).theologianSelections.length
         : (content as ReviewContentResponse).grades.length;
 
@@ -61,6 +61,9 @@ export default function SharedResult() {
         <SharedAskBody content={content as AskContentResponse} />
       )}
       {meta.toolType === "poll" && (
+        <SharedPollBody content={content as PollContentResponse} />
+      )}
+      {meta.toolType === "super_poll" && (
         <SharedPollBody content={content as PollContentResponse} />
       )}
       {meta.toolType === "review" && (

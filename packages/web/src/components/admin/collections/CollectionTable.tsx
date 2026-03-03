@@ -1,10 +1,10 @@
 import { DataTable } from "@/components/admin/ui/DataTable";
 import { Badge } from "@/components/admin/ui/Badge";
-import type { Collection } from "@/data/admin/mock-collections";
+import type { AdminCollection } from "@/data/admin/collection-types";
 
 interface CollectionTableProps {
-  collections: Collection[];
-  onCollectionClick: (c: Collection) => void;
+  collections: AdminCollection[];
+  onCollectionClick: (c: AdminCollection) => void;
 }
 
 export function CollectionTable({
@@ -20,7 +20,9 @@ export function CollectionTable({
           render: (c) => (
             <div>
               <p className="font-medium text-gray-900">{c.title}</p>
-              <p className="mt-0.5 text-xs text-gray-500">{c.subtitle}</p>
+              {c.subtitle && (
+                <p className="mt-0.5 text-xs text-gray-500">{c.subtitle}</p>
+              )}
             </div>
           ),
         },
@@ -30,16 +32,6 @@ export function CollectionTable({
           className: "w-24 text-right",
           render: (c) => (
             <span className="tabular-nums">{c.resultCount}</span>
-          ),
-        },
-        {
-          key: "views",
-          header: "Views",
-          className: "w-24 text-right",
-          render: (c) => (
-            <span className="tabular-nums">
-              {c.views.toLocaleString()}
-            </span>
           ),
         },
         {

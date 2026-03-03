@@ -1,4 +1,5 @@
 import { TOOL_LABELS, TOOL_COLORS, TOOL_ICONS } from "@/data/mock-library";
+import { TeamPanel } from "@/components/results/TeamPanel";
 import type { PublicResultMeta } from "@/data/result-types";
 
 interface SharedReportHeaderProps {
@@ -46,6 +47,10 @@ export function SharedReportHeader({ meta }: SharedReportHeaderProps) {
           <h1 className="mt-2 font-serif text-2xl font-bold lg:text-3xl">
             {meta.title}
           </h1>
+
+          {meta.teamMembers && meta.teamMembers.length > 0 && meta.teamName && (
+            <TeamPanel teamName={meta.teamName} members={meta.teamMembers} />
+          )}
         </div>
       </div>
     </div>

@@ -1,6 +1,6 @@
 export type JobStatus = "pending" | "processing" | "completed" | "failed";
 export type JobPriority = "critical" | "high" | "normal" | "low";
-export type JobType = "ask" | "poll" | "review" | "research" | "pdf" | "review_file";
+export type JobType = "ask" | "poll" | "super_poll" | "review" | "research" | "pdf" | "review_file";
 
 export interface JobStats {
   pending: number;

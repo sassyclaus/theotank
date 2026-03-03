@@ -4,15 +4,24 @@ import { ArrowLeft, Download, Share2, Link2, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TOOL_LABELS, TOOL_COLORS, TOOL_ICONS } from "@/data/mock-library";
 import { downloadPdf } from "@/lib/api";
+import { TeamPanel } from "./TeamPanel";
 import type { FullResult } from "@/data/mock-results";
+
+interface TeamMemberInfo {
+  theologianId: string;
+  name: string;
+  initials: string | null;
+  tradition: string | null;
+}
 
 interface ReportHeaderProps {
   result: FullResult;
   resultId?: string;
   pdfKey?: string | null;
+  teamMembers?: TeamMemberInfo[] | null;
 }
 
-export function ReportHeader({ result, resultId, pdfKey }: ReportHeaderProps) {
+export function ReportHeader({ result, resultId, pdfKey, teamMembers }: ReportHeaderProps) {
   const navigate = useNavigate();
   const colors = TOOL_COLORS[result.tool];
   const Icon = TOOL_ICONS[result.tool];
@@ -116,6 +125,10 @@ export function ReportHeader({ result, resultId, pdfKey }: ReportHeaderProps) {
               {copied ? "Copied!" : "Copy Link"}
             </Button>
           </div>
+
+          {teamMembers && teamMembers.length > 0 && (
+            <TeamPanel teamName={result.team} members={teamMembers} />
+          )}
         </div>
       </div>
     </div>

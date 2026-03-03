@@ -4,6 +4,7 @@ import {
   results,
   resultTypes,
   resultProgressLogs,
+  resultViews,
   jobs,
   teams,
   teamMemberships,
@@ -11,11 +12,14 @@ import {
   theologians,
   reviewFiles,
 } from "@theotank/rds/schema";
-import { eq, and, desc, asc, isNull } from "drizzle-orm";
+import { eq, and, desc, asc, isNull, sql } from "drizzle-orm";
 import { presignGetUrl } from "../lib/s3";
 import { createSnapshot } from "../lib/team-helpers";
-import { deductCredit, CreditError } from "../lib/credits";
+import { checkAndRecordUsage, UsageLimitError } from "../lib/usage-limits";
 import type { AppEnv } from "../lib/types";
+
+// Sentinel UUID for platform-wide super-poll snapshots (no real team)
+const SUPER_POLL_TEAM_ID = "00000000-0000-0000-0000-000000000000";
 
 const app = new Hono<AppEnv>();
 
@@ -26,12 +30,13 @@ app.post("/", async (c) => {
   const body = await c.req.json<
     | { toolType: "ask"; teamId: string; question: string }
     | { toolType: "poll"; teamId: string; question: string; options: string[] }
+    | { toolType: "super_poll"; question: string; options: string[] }
     | { toolType: "review"; teamId: string; reviewFileId: string; focusPrompt?: string }
     | { toolType: "research"; theologianId: string; question: string }
   >();
 
-  // Validate poll-specific payload
-  if (body.toolType === "poll") {
+  // Validate poll-specific payload (both poll and super_poll)
+  if (body.toolType === "poll" || body.toolType === "super_poll") {
     const { options } = body;
     if (!Array.isArray(options) || options.length < 2) {
       return c.json({ error: "Poll requires at least 2 options" }, 400);
@@ -86,16 +91,14 @@ app.post("/", async (c) => {
 
   const log = c.get("log");
 
+  // Pre-generate result UUID for atomic usage check + result insert
+  const resultId = crypto.randomUUID();
+
   let result;
   try {
     result = await db.transaction(async (tx) => {
-      // Deduct credit before proceeding
-      const hasCredit = await deductCredit(tx, internalUserId, body.toolType);
-      if (!hasCredit) {
-        throw new CreditError(body.toolType);
-      }
-
       // Look up active result type
+      // For super_poll, look up the super_poll result type
       const [resultType] = await tx
         .select()
         .from(resultTypes)
@@ -114,6 +117,7 @@ app.post("/", async (c) => {
         const [resultRow] = await tx
           .insert(results)
           .values({
+            id: resultId,
             userId,
             toolType: body.toolType,
             title,
@@ -125,10 +129,85 @@ app.post("/", async (c) => {
           })
           .returning();
 
+        // Check and record usage (after result insert so FK is satisfied; rolls back on limit error)
+        await checkAndRecordUsage(tx, internalUserId, body.toolType, resultId);
+
         const [jobRow] = await tx
           .insert(jobs)
           .values({
             type: body.toolType,
+            payload: { resultId: resultRow.id },
+          })
+          .returning();
+
+        await tx
+          .update(results)
+          .set({ jobId: jobRow.id })
+          .where(eq(results.id, resultRow.id));
+
+        return {
+          id: resultRow.id,
+          jobId: jobRow.id,
+          status: resultRow.status,
+          toolType: resultRow.toolType,
+          title: resultRow.title,
+          createdAt: resultRow.createdAt,
+        };
+      }
+
+      // Super-poll: fetch all theologians, create snapshot
+      if (body.toolType === "super_poll") {
+        const allTheologians = await tx
+          .select({
+            theologianId: theologians.id,
+            name: theologians.name,
+            initials: theologians.initials,
+            tradition: theologians.tradition,
+          })
+          .from(theologians)
+          .orderBy(asc(theologians.name));
+
+        const teamSize = allTheologians.length;
+
+        const inputPayload = { question: body.question, options: body.options };
+        const title = body.question;
+
+        // Create a synthetic team snapshot for all theologians
+        // Use unique version per result to avoid unique constraint conflicts
+        const snapshotVersion = Date.now();
+        const snapshotId = crypto.randomUUID();
+        await tx
+          .insert(teamSnapshots)
+          .values({
+            id: snapshotId,
+            teamId: SUPER_POLL_TEAM_ID,
+            version: snapshotVersion,
+            name: "All Platform Theologians",
+            description: `Platform-wide poll across ${teamSize} theologians`,
+            members: allTheologians,
+          });
+
+        const [resultRow] = await tx
+          .insert(results)
+          .values({
+            id: resultId,
+            userId,
+            toolType: body.toolType,
+            title,
+            inputPayload,
+            teamSnapshotId: snapshotId,
+            resultTypeId: resultType.id,
+            status: "pending",
+          })
+          .returning();
+
+        // Check and record usage (after result insert so FK is satisfied; rolls back on limit error)
+        await checkAndRecordUsage(tx, internalUserId, body.toolType, resultId, teamSize);
+
+        const [jobRow] = await tx
+          .insert(jobs)
+          .values({
+            type: "super_poll",
             payload: { resultId: resultRow.id },
           })
           .returning();
@@ -156,6 +235,23 @@ app.post("/", async (c) => {
       }
 
       // Create/reuse team snapshot for current version
+      const memberRows = await tx
+        .select({
+          theologianId: theologians.id,
+          name: theologians.name,
+          initials: theologians.initials,
+          tradition: theologians.tradition,
+        })
+        .from(teamMemberships)
+        .innerJoin(
+          theologians,
+          eq(teamMemberships.theologianId, theologians.id)
+        )
+        .where(eq(teamMemberships.teamId, team.id))
+        .orderBy(asc(theologians.name));
+
+      const teamSize = memberRows.length;
+
       await tx
         .insert(teamSnapshots)
         .values({
@@ -163,23 +259,7 @@ app.post("/", async (c) => {
           version: team.version,
           name: team.name,
           description: team.description,
-          members: await (async () => {
-            const memberRows = await tx
-              .select({
-                theologianId: theologians.id,
-                name: theologians.name,
-                initials: theologians.initials,
-                tradition: theologians.tradition,
-              })
-              .from(teamMemberships)
-              .innerJoin(
-                theologians,
-                eq(teamMemberships.theologianId, theologians.id)
-              )
-              .where(eq(teamMemberships.teamId, team.id))
-              .orderBy(asc(theologians.name));
-            return memberRows;
-          })(),
+          members: memberRows,
         })
         .onConflictDoNothing();
 
@@ -222,6 +302,7 @@ app.post("/", async (c) => {
       const [resultRow] = await tx
         .insert(results)
         .values({
+          id: resultId,
           userId,
           toolType: body.toolType,
           title,
@@ -232,6 +313,9 @@ app.post("/", async (c) => {
           status: "pending",
         })
         .returning();
+
+      // Check and record usage (after result insert so FK is satisfied; rolls back on limit error)
+      await checkAndRecordUsage(tx, internalUserId, body.toolType, resultId, teamSize);
 
       // Insert job row
       const [jobRow] = await tx
@@ -258,10 +342,16 @@ app.post("/", async (c) => {
       };
     });
   } catch (err) {
-    if (err instanceof CreditError) {
+    if (err instanceof UsageLimitError) {
       return c.json(
-        { error: "Insufficient credits", code: "INSUFFICIENT_CREDITS" },
-        402,
+        {
+          error: "Usage limit reached",
+          code: "USAGE_LIMIT_REACHED",
+          toolType: err.toolType,
+          used: err.used,
+          limit: err.limit,
+        },
+        429,
       );
     }
     log?.error({ err, userId, toolType: body.toolType }, "Result creation failed");
@@ -345,10 +435,24 @@ app.get("/:id", async (c) => {
       ? await presignGetUrl(row.contentKey, 300)
       : null;
 
+  // Increment view count + insert view event (fire-and-forget)
+  if (row.status === "completed") {
+    db.update(results)
+      .set({ viewCount: sql`${results.viewCount} + 1` })
+      .where(eq(results.id, resultId))
+      .then(() => {})
+      .catch(() => {});
+
+    db.insert(resultViews)
+      .values({ resultId })
+      .then(() => {})
+      .catch(() => {});
+  }
+
   return c.json({ ...row, contentUrl });
 });
 
-// POST /api/results/:id/retry — retry a failed result
+// POST /api/results/:id/retry — retry a failed result (no usage charge)
 app.post("/:id/retry", async (c) => {
   const userId = c.get("userId");
   const resultId = c.req.param("id");

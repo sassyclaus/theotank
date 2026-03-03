@@ -4,7 +4,7 @@ import { SignUpButton, SignInButton, useAuth } from "@clerk/clerk-react";
 import { Button } from "@/components/ui/button";
 
 interface GatedContentBannerProps {
-  toolType: "ask" | "poll" | "review";
+  toolType: "ask" | "poll" | "super_poll" | "review";
   panelSize: number;
   resultId: string;
 }
@@ -12,6 +12,7 @@ interface GatedContentBannerProps {
 const TOOL_COPY: Record<string, (n: number) => string> = {
   ask: (n) => `${n} theologians shared their individual perspectives`,
   poll: (n) => `${n} theologians explained their individual selections`,
+  super_poll: (n) => `${n} theologians were polled across the platform`,
   review: (n) => `${n} theologians provided their individual reviews`,
 };
 

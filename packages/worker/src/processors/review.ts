@@ -13,6 +13,7 @@ import { downloadBuffer, uploadJson } from "../s3";
 import { colorForTradition } from "../lib/tradition-colors";
 import { withResultContext, failBoth, type ResultContext } from "./scaffold";
 import { tryGenerateShareImage } from "../lib/generate-share-image";
+import { TokenAccumulator } from "../lib/token-accumulator";
 import {
   buildReviewSystemPrompt,
   buildReviewUserPrompt,
@@ -34,6 +35,7 @@ export const processReview = withResultContext("review", async (job: Job, ctx: R
   const db = getDb();
   const payload = job.payload as ReviewJobPayload;
   const { resultId } = payload;
+  const tokens = new TokenAccumulator();
 
   const algoConfig = algoVersion.config as {
     defaultModels: {
@@ -59,7 +61,19 @@ export const processReview = withResultContext("review", async (job: Job, ctx: R
   }
 
   const textBuffer = await downloadBuffer(reviewFile.textStorageKey);
-  const reviewText = textBuffer.toString("utf-8");
+  const fullReviewText = textBuffer.toString("utf-8");
+
+  const MAX_REVIEW_CHARS = 48_000;
+  const wasTruncated = fullReviewText.length > MAX_REVIEW_CHARS;
+  const originalCharCount = fullReviewText.length;
+  const reviewText = fullReviewText.slice(0, MAX_REVIEW_CHARS);
+
+  if (wasTruncated) {
+    await logProgress(
+      resultId,
+      `Document was ${originalCharCount.toLocaleString()} characters — trimmed to ${MAX_REVIEW_CHARS.toLocaleString()} for review.`,
+    );
+  }
 
   // Load team snapshot → theologian details
   if (!result.teamSnapshotId) {
@@ -143,6 +157,8 @@ export const processReview = withResultContext("review", async (job: Job, ctx: R
         { label: `review:${t.name}`, log },
       );
 
+      tokens.record(reviewModel, response.usage);
+
       const content = response.choices[0]?.message?.content;
       if (!content) {
         throw new Error(`Empty response for ${t.name}`);
@@ -201,6 +217,8 @@ export const processReview = withResultContext("review", async (job: Job, ctx: R
     { label: "synthesis", log },
   );
 
+  tokens.record(synthesisModel, synthResponse.usage);
+
   const synthContent = synthResponse.choices[0]?.message?.content;
   if (!synthContent) {
     await failBoth(resultId, job.id, "Empty synthesis response");
@@ -216,6 +234,7 @@ export const processReview = withResultContext("review", async (job: Job, ctx: R
     overallGrade: synthesis.overall_grade,
     summary: synthesis.summary,
     grades,
+    ...(wasTruncated && { wasTruncated, originalCharCount }),
   };
 
   const now = new Date();
@@ -266,6 +285,7 @@ export const processReview = withResultContext("review", async (job: Job, ctx: R
         review: reviewModel,
         synthesis: synthesisModel,
       },
+      tokenUsage: tokens.toJSON(),
       completedAt: now,
       updatedAt: now,
     })

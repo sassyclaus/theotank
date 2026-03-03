@@ -1,17 +1,30 @@
+export type ToolType = "ask" | "poll" | "super_poll" | "review" | "research";
+
+export interface ToolUsage {
+  used: number;
+  limit: number;
+  override?: {
+    monthlyLimit: number;
+    reason: string | null;
+    expiresAt: string | null;
+  };
+}
+
 export interface AdminUserSummary {
   id: string;
   clerkId: string;
   email: string | null;
   name: string | null;
   imageUrl: string | null;
-  credits: Record<string, number>;
+  tier: string;
+  usage: Record<string, number>;
   resultCount: number;
   createdAt: string;
 }
 
 export interface AdminUserResult {
   id: string;
-  toolType: "ask" | "poll" | "review" | "research";
+  toolType: ToolType;
   title: string;
   status: "pending" | "processing" | "completed" | "failed";
   createdAt: string;
@@ -23,25 +36,29 @@ export interface AdminUserDetail {
   email: string | null;
   name: string | null;
   imageUrl: string | null;
-  credits: Record<string, number>;
+  tier: string;
+  usage: Record<string, ToolUsage>;
   results: AdminUserResult[];
   createdAt: string;
   updatedAt: string;
 }
 
-export interface UpdateCreditPayload {
-  creditType: string;
-  balance: number;
+export interface UpdateTierPayload {
+  tier: string;
 }
 
-export interface CreditLedgerEntry {
+export interface SetUsageOverridePayload {
+  toolType: string;
+  monthlyLimit: number;
+  reason?: string;
+  expiresAt?: string;
+}
+
+export interface UsageHistoryEntry {
   id: string;
-  userId: string;
-  creditType: string;
-  delta: number;
-  balanceAfter: number;
-  reason: string;
+  toolType: string;
   resultId: string | null;
-  adminId: string | null;
+  resultTitle: string | null;
+  teamSize: number | null;
   createdAt: string;
 }

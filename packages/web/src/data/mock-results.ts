@@ -22,6 +22,7 @@ interface ResultBase {
 export interface AskPerspective {
   theologian: ResultTheologian;
   perspective: string;
+  reaction?: string | null;
 }
 
 export interface AskResult extends ResultBase {

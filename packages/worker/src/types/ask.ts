@@ -11,6 +11,7 @@ export interface AskPerspectiveEntry {
     color: string;
   };
   perspective: string;
+  reaction: string | null;
   keyThemes: string[];
   relevantWorks: string[];
 }
@@ -32,6 +33,10 @@ export interface LLMPerspectiveResponse {
   perspective: string;
   key_themes: string[];
   relevant_works: string[];
+}
+
+export interface LLMReactionResponse {
+  reaction: string;
 }
 
 export interface LLMSynthesisResponse {

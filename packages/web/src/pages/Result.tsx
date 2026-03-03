@@ -3,6 +3,7 @@ import { useResult, useResultContent, useResultProgress } from "@/hooks/useResul
 import { ReportHeader } from "@/components/results/ReportHeader";
 import { AskResultBody } from "@/components/results/AskResultBody";
 import { PollResultBody } from "@/components/results/PollResultBody";
+import { SuperPollResultBody } from "@/components/results/SuperPollResultBody";
 import { ReviewResultBody } from "@/components/results/ReviewResultBody";
 import { ResearchResultBody } from "@/components/results/ResearchResultBody";
 import { ProgressTimeline } from "@/components/roundtable/ProgressTimeline";
@@ -45,6 +46,7 @@ export default function Result() {
     // In-progress state
     if (isActive(apiResult.status)) {
       const isResearch = apiResult.toolType === "research";
+      const isSuperPoll = apiResult.toolType === "super_poll";
       return (
         <div className="mx-auto max-w-4xl px-4 py-12 lg:px-8">
           <Link
@@ -108,8 +110,21 @@ export default function Result() {
 
         return (
           <div className="mx-auto max-w-4xl px-4 py-12 lg:px-8">
-            <ReportHeader result={mapped} resultId={apiResult.id} pdfKey={apiResult.pdfKey} />
+            <ReportHeader result={mapped} resultId={apiResult.id} pdfKey={apiResult.pdfKey} teamMembers={apiResult.teamMembers} />
             <PollResultBody result={mapped} />
+          </div>
+        );
+      }
+
+      if (apiResult.toolType === "super_poll") {
+        const pollContent = content as PollContentResponse;
+        const mapped = mapPollContent(apiResult, pollContent, dateStr);
+        mapped.team = apiResult.teamName ?? "All Platform Theologians";
+
+        return (
+          <div className="mx-auto max-w-4xl px-4 py-12 lg:px-8">
+            <ReportHeader result={mapped} resultId={apiResult.id} pdfKey={apiResult.pdfKey} teamMembers={apiResult.teamMembers} />
+            <SuperPollResultBody pollResult={mapped} rawSelections={pollContent.theologianSelections} />
           </div>
         );
       }
@@ -135,8 +150,8 @@ export default function Result() {
 
         return (
           <div className="mx-auto max-w-4xl px-4 py-12 lg:px-8">
-            <ReportHeader result={mapped} resultId={apiResult.id} pdfKey={apiResult.pdfKey} />
-            <ReviewResultBody result={mapped} />
+            <ReportHeader result={mapped} resultId={apiResult.id} pdfKey={apiResult.pdfKey} teamMembers={apiResult.teamMembers} />
+            <ReviewResultBody result={mapped} wasTruncated={reviewContent.wasTruncated} originalCharCount={reviewContent.originalCharCount} />
           </div>
         );
       }
@@ -180,13 +195,14 @@ export default function Result() {
         perspectives: askContent.perspectives.map((p) => ({
           theologian: p.theologian,
           perspective: p.perspective,
+          reaction: p.reaction ?? null,
         })),
       };
 
       return (
         <div className="mx-auto max-w-4xl px-4 py-12 lg:px-8">
-          <ReportHeader result={mapped} resultId={apiResult.id} pdfKey={apiResult.pdfKey} />
-          <AskResultBody result={mapped} />
+          <ReportHeader result={mapped} resultId={apiResult.id} pdfKey={apiResult.pdfKey} teamMembers={apiResult.teamMembers} />
+          <AskResultBody result={mapped} keyAgreements={askContent.synthesis.keyAgreements} keyDisagreements={askContent.synthesis.keyDisagreements} />
         </div>
       );
     }

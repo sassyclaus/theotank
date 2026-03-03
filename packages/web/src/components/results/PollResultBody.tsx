@@ -1,13 +1,26 @@
 import { Card, CardContent } from "@/components/ui/card";
+import { splitParagraphs } from "@/lib/utils";
 import { TheologianHeader } from "./AskResultBody";
 import { CenturyLineChart, OPTION_COLORS_BG } from "./CenturyLineChart";
-import type { PollResult } from "@/data/mock-results";
+import type { PollResult, PollTheologianSelection } from "@/data/mock-results";
 
 interface PollResultBodyProps {
   result: PollResult;
+  visibleSelections?: PollTheologianSelection[];
+  showMoreCount?: number;
+  onShowMore?: () => void;
 }
 
-export function PollResultBody({ result }: PollResultBodyProps) {
+export function PollResultBody({
+  result,
+  visibleSelections,
+  showMoreCount,
+  onShowMore,
+}: PollResultBodyProps) {
+  const selections = visibleSelections ?? result.theologianSelections;
+  const isPaginated = visibleSelections !== undefined;
+  const totalSelections = result.theologianSelections.length;
+
   return (
     <div className="space-y-8">
       {/* Poll Summary */}
@@ -16,9 +29,11 @@ export function PollResultBody({ result }: PollResultBodyProps) {
           <h2 className="mb-3 font-serif text-xl font-semibold">
             Poll Summary
           </h2>
-          <p className="text-base leading-relaxed text-text-secondary">
-            {result.summary}
-          </p>
+          <div className="space-y-3 text-base leading-relaxed text-text-secondary">
+            {splitParagraphs(result.summary).map((para, i) => (
+              <p key={i}>{para}</p>
+            ))}
+          </div>
         </CardContent>
       </Card>
 
@@ -80,11 +95,18 @@ export function PollResultBody({ result }: PollResultBodyProps) {
       </Card>
 
       {/* Individual Theologian Selections */}
-      <h2 className="font-serif text-xl font-semibold">
-        Individual Selections
-      </h2>
+      <div className="flex items-baseline justify-between">
+        <h2 className="font-serif text-xl font-semibold">
+          Individual Selections
+        </h2>
+        {isPaginated && (
+          <span className="text-sm text-text-secondary">
+            showing {selections.length} of {totalSelections}
+          </span>
+        )}
+      </div>
       <div className="space-y-6">
-        {result.theologianSelections.map((sel) => (
+        {selections.map((sel) => (
           <Card key={sel.theologian.name}>
             <CardContent>
               <div className="flex items-start justify-between gap-4">
@@ -93,13 +115,27 @@ export function PollResultBody({ result }: PollResultBodyProps) {
                   {sel.selection}
                 </span>
               </div>
-              <p className="mt-4 text-base leading-relaxed text-text-primary">
-                {sel.justification}
-              </p>
+              <div className="mt-4 space-y-3 text-base leading-relaxed text-text-primary">
+                {splitParagraphs(sel.justification).map((para, i) => (
+                  <p key={i}>{para}</p>
+                ))}
+              </div>
             </CardContent>
           </Card>
         ))}
       </div>
+
+      {/* Show more button */}
+      {showMoreCount !== undefined && showMoreCount > 0 && onShowMore && (
+        <div className="flex justify-center">
+          <button
+            onClick={onShowMore}
+            className="rounded-lg border border-teal/30 px-6 py-2.5 text-sm font-medium text-teal transition-colors hover:bg-teal/5"
+          >
+            Show {Math.min(showMoreCount, 20)} more
+          </button>
+        </div>
+      )}
     </div>
   );
 }

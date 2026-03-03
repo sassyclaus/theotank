@@ -14,7 +14,8 @@ Rules:
 
 export function buildSynthesisUserPrompt(
   question: string,
-  perspectives: AskPerspectiveEntry[]
+  perspectives: AskPerspectiveEntry[],
+  reactions?: Array<{ theologianName: string; reaction: string }>,
 ): string {
   const perspectiveSummary = perspectives
     .map(
@@ -23,6 +24,20 @@ export function buildSynthesisUserPrompt(
     )
     .join("\n\n---\n\n");
 
+  let reactionsBlock = "";
+  if (reactions && reactions.length > 0) {
+    const reactionLines = reactions
+      .map((r) => `**${r.theologianName}:**\n${r.reaction}`)
+      .join("\n\n");
+    reactionsBlock = `
+
+After reading each other's perspectives, the panelists offered brief reactions:
+
+${reactionLines}
+
+`;
+  }
+
   return `The following theological question was posed to a panel of theologians:
 
 "${question}"
@@ -30,8 +45,8 @@ export function buildSynthesisUserPrompt(
 Here are their individual perspectives:
 
 ${perspectiveSummary}
-
-Now synthesize these perspectives. Identify where they agree, where they disagree, and provide actionable sermon ideas a pastor could develop from this discussion.`;
+${reactionsBlock}
+Now synthesize these perspectives. Identify where they agree, where they disagree, and provide actionable sermon ideas a pastor could develop from this discussion.${reactions && reactions.length > 0 ? " Note where theologians engaged with, affirmed, or pushed back on each other's views in their reactions." : ""}`;
 }
 
 export const synthesisJsonSchema = {

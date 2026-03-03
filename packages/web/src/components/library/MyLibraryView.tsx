@@ -27,6 +27,7 @@ function mapPreview(r: ResultSummary): LibraryPreview {
     const pd = r.previewData as Record<string, unknown>;
     if (pd.type === "ask") return { type: "ask", conclusion: (pd.conclusion as string) ?? "" };
     if (pd.type === "poll") return { type: "poll", bars: (pd.bars as Array<{ label: string; percentage: number }>) ?? [] };
+    if (pd.type === "super_poll") return { type: "super_poll", bars: (pd.bars as Array<{ label: string; percentage: number }>) ?? [], totalRespondents: (pd.totalRespondents as number) ?? 0 };
     if (pd.type === "review") return { type: "review", grade: (pd.overallGrade as string) ?? (pd.grade as string) ?? "" };
     if (pd.type === "research") return { type: "research", citedSourcesCount: (pd.citedSourcesCount as number) ?? 0 };
   }
@@ -80,7 +81,13 @@ export function MyLibraryView({
 
   const filtered = useMemo(() => {
     return items.filter((item) => {
-      if (selectedTool !== "all" && item.tool !== selectedTool) return false;
+      if (selectedTool !== "all") {
+        // "poll" filter matches both poll and super_poll
+        const match = selectedTool === "poll"
+          ? item.tool === "poll" || item.tool === "super_poll"
+          : item.tool === selectedTool;
+        if (!match) return false;
+      }
 
       if (selectedTeam !== "all") {
         const teamLabel = teamFilters.find((f) => f.id === selectedTeam)?.label;

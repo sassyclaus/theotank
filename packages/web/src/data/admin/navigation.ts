@@ -7,7 +7,7 @@ import {
   FlaskConical,
   BookOpen,
   ListOrdered,
-  Settings,
+  Cpu,
   ClipboardList,
   ExternalLink,
   type LucideIcon,
@@ -34,7 +34,7 @@ export const adminNavSections: AdminNavSection[] = [
       { label: "Research", href: "/admin/research", icon: FlaskConical },
       { label: "Collections", href: "/admin/collections", icon: BookOpen },
       { label: "Jobs", href: "/admin/jobs", icon: ListOrdered },
-      { label: "System", href: "/admin/system", icon: Settings },
+      { label: "Inference", href: "/admin/inference", icon: Cpu },
     ],
   },
   {

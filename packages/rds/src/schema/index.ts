@@ -7,3 +7,6 @@ export * from "./custom-types";
 export * from "./corpus";
 export * from "./users";
 export * from "./waitlist";
+export * from "./content-flags";
+export * from "./collections";
+export * from "./result-views";

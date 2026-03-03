@@ -1,4 +1,5 @@
 import { DataTable } from "@/components/admin/ui/DataTable";
+import { Badge } from "@/components/admin/ui/Badge";
 import type { AdminUserSummary } from "@/data/admin/user-types";
 
 interface UserTableProps {
@@ -6,7 +7,14 @@ interface UserTableProps {
   onUserClick: (user: AdminUserSummary) => void;
 }
 
-const CREDIT_TYPE_ORDER = ["ask", "poll", "review", "research"];
+const TOOL_ORDER = ["ask", "poll", "super_poll", "review", "research"];
+const TOOL_SHORT: Record<string, string> = {
+  ask: "Ask",
+  poll: "Poll",
+  super_poll: "SP",
+  review: "Rev",
+  research: "Res",
+};
 
 export function UserTable({ users, onUserClick }: UserTableProps) {
   const columns = [
@@ -14,19 +22,22 @@ export function UserTable({ users, onUserClick }: UserTableProps) {
       key: "user",
       header: "User",
       render: (row: AdminUserSummary) => (
-        <div>
-          <p className="font-medium text-gray-900">{row.name ?? "Unknown"}</p>
-          <p className="text-xs text-gray-500">{row.email ?? row.clerkId}</p>
+        <div className="flex items-center gap-2">
+          <div>
+            <p className="font-medium text-gray-900">{row.name ?? "Unknown"}</p>
+            <p className="text-xs text-gray-500">{row.email ?? row.clerkId}</p>
+          </div>
+          <Badge variant="neutral">{row.tier}</Badge>
         </div>
       ),
     },
     {
-      key: "credits",
-      header: "Credits",
+      key: "usage",
+      header: "Usage (30d)",
       render: (row: AdminUserSummary) => {
-        const parts = CREDIT_TYPE_ORDER
-          .filter((t) => t in row.credits)
-          .map((t) => `${t[0].toUpperCase() + t.slice(1)}: ${row.credits[t]}`);
+        const parts = TOOL_ORDER
+          .filter((t) => t in row.usage)
+          .map((t) => `${TOOL_SHORT[t]}: ${row.usage[t]}`);
         return (
           <span className="text-xs text-gray-600">
             {parts.length > 0 ? parts.join(" | ") : "—"}

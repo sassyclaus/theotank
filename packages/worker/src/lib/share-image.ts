@@ -15,7 +15,7 @@ export interface ShareImageMetadata {
   theologianCount: number;
 }
 
-type ToolType = "ask" | "poll" | "review";
+type ToolType = "ask" | "poll" | "super_poll" | "review";
 
 // ── Fonts (lazy-loaded) ─────────────────────────────────────────────
 
@@ -458,6 +458,7 @@ export async function renderShareImage(
       children = buildAskCard(content as AskContent, metadata);
       break;
     case "poll":
+    case "super_poll":
       children = buildPollCard(content as PollContent, metadata);
       break;
     case "review":

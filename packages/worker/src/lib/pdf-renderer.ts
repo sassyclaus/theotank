@@ -21,7 +21,7 @@ const CONTENT_WIDTH = PAGE.width - PAGE.marginLeft - PAGE.marginRight;
 
 // ── Types ───────────────────────────────────────────────────────────
 
-type ToolType = "ask" | "poll" | "review" | "research";
+type ToolType = "ask" | "poll" | "super_poll" | "review" | "research";
 
 interface PdfMetadata {
   title: string;

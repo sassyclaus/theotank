@@ -9,7 +9,7 @@ const pageTitles: Record<string, string> = {
   "/admin/research": "Research",
   "/admin/collections": "Collections",
   "/admin/jobs": "Jobs",
-  "/admin/system": "System",
+  "/admin/inference": "Inference",
   "/admin/audit-log": "Audit Log",
 };
 

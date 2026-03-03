@@ -22,6 +22,8 @@ export interface ReviewContent {
   overallGrade: string;
   summary: string;
   grades: ReviewGradeEntry[];
+  wasTruncated?: boolean;
+  originalCharCount?: number;
 }
 
 export interface LLMReviewResponse {

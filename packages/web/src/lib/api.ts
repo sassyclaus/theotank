@@ -17,6 +17,9 @@ import type {
   ResearchContentResponse,
   PdfStatusResponse,
   PublicResultMeta,
+  PublicResultListItem,
+  PublicResultSort,
+  UsageSummary,
 } from "@/data/result-types";
 import type {
   AdminNativeTeam,
@@ -34,8 +37,9 @@ import type {
 import type {
   AdminUserSummary,
   AdminUserDetail,
-  UpdateCreditPayload,
-  CreditLedgerEntry,
+  UpdateTierPayload,
+  SetUsageOverridePayload,
+  UsageHistoryEntry,
 } from "@/data/admin/user-types";
 import type {
   JobListResponse,
@@ -271,19 +275,39 @@ export async function adminGetUser(id: string): Promise<AdminUserDetail> {
   return apiClient.get<AdminUserDetail>(`/api/admin/users/${id}`);
 }
 
-export async function adminUpdateUserCredits(
+export async function adminUpdateUserTier(
   id: string,
-  payload: UpdateCreditPayload,
-): Promise<{ creditType: string; balance: number }> {
-  return apiClient.put(`/api/admin/users/${id}/credits`, payload);
+  payload: UpdateTierPayload,
+): Promise<{ tier: string }> {
+  return apiClient.put(`/api/admin/users/${id}/tier`, payload);
 }
 
-export async function adminGetUserLedger(
+export async function adminSetUsageOverride(
   id: string,
-  creditType?: string,
-): Promise<{ entries: CreditLedgerEntry[] }> {
-  const params = creditType ? `?creditType=${creditType}` : "";
-  return apiClient.get(`/api/admin/users/${id}/ledger${params}`);
+  payload: SetUsageOverridePayload,
+): Promise<{ ok: boolean }> {
+  return apiClient.put(`/api/admin/users/${id}/usage-override`, payload);
+}
+
+export async function adminDeleteUsageOverride(
+  id: string,
+  toolType: string,
+): Promise<{ ok: boolean }> {
+  return apiClient.delete(`/api/admin/users/${id}/usage-override/${toolType}`);
+}
+
+export async function adminGetUsageHistory(
+  id: string,
+  toolType?: string,
+): Promise<{ entries: UsageHistoryEntry[] }> {
+  const params = toolType ? `?toolType=${toolType}` : "";
+  return apiClient.get(`/api/admin/users/${id}/usage-history${params}`);
+}
+
+// ── User Usage ──────────────────────────────────────────────────────
+
+export async function getMyUsage(): Promise<UsageSummary> {
+  return apiClient.get<UsageSummary>("/api/usage");
 }
 
 // ── Admin Jobs ───────────────────────────────────────────────────────
@@ -329,6 +353,132 @@ export async function adminBulkCancelJobs(): Promise<BulkActionResponse> {
   return apiClient.post<BulkActionResponse>("/api/admin/jobs/bulk/cancel");
 }
 
+// ── Admin Content ───────────────────────────────────────────────────
+
+import type {
+  ModerationItem,
+  PublicLibraryResponse,
+  FlaggedItem,
+} from "@/data/admin/content-types";
+import type {
+  AdminCollection,
+  AdminCollectionDetail,
+  CreateCollectionPayload,
+  UpdateCollectionPayload,
+  PublicCollection,
+} from "@/data/admin/collection-types";
+
+export async function adminGetModerationQueue(): Promise<ModerationItem[]> {
+  return apiClient.get<ModerationItem[]>("/api/admin/content/moderation");
+}
+
+export async function adminGetPublicLibrary(params?: {
+  search?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<PublicLibraryResponse> {
+  const query = new URLSearchParams();
+  if (params?.search) query.set("search", params.search);
+  if (params?.limit) query.set("limit", String(params.limit));
+  if (params?.offset) query.set("offset", String(params.offset));
+  const qs = query.toString();
+  return apiClient.get<PublicLibraryResponse>(
+    `/api/admin/content/library${qs ? `?${qs}` : ""}`
+  );
+}
+
+export async function adminGetFlaggedItems(): Promise<FlaggedItem[]> {
+  return apiClient.get<FlaggedItem[]>("/api/admin/content/flagged");
+}
+
+export async function adminApproveFlag(flagId: string): Promise<{ ok: boolean }> {
+  return apiClient.post(`/api/admin/content/flags/${flagId}/approve`);
+}
+
+export async function adminRemoveFlag(flagId: string): Promise<{ ok: boolean }> {
+  return apiClient.post(`/api/admin/content/flags/${flagId}/remove`);
+}
+
+export async function adminFlagResult(
+  resultId: string,
+  payload?: { reason?: string; setPendingReview?: boolean }
+): Promise<{ ok: boolean }> {
+  return apiClient.post(`/api/admin/content/results/${resultId}/flag`, payload);
+}
+
+export async function adminRestoreResult(resultId: string): Promise<{ ok: boolean }> {
+  return apiClient.post(`/api/admin/content/results/${resultId}/restore`);
+}
+
+// ── Admin Collections ───────────────────────────────────────────────
+
+export async function adminListCollections(): Promise<AdminCollection[]> {
+  return apiClient.get<AdminCollection[]>("/api/admin/collections");
+}
+
+export async function adminGetCollection(id: string): Promise<AdminCollectionDetail> {
+  return apiClient.get<AdminCollectionDetail>(`/api/admin/collections/${id}`);
+}
+
+export async function adminCreateCollection(
+  payload: CreateCollectionPayload
+): Promise<AdminCollection> {
+  return apiClient.post<AdminCollection>("/api/admin/collections", payload);
+}
+
+export async function adminUpdateCollection(
+  id: string,
+  payload: UpdateCollectionPayload
+): Promise<AdminCollection> {
+  return apiClient.put<AdminCollection>(`/api/admin/collections/${id}`, payload);
+}
+
+export async function adminDeleteCollection(id: string): Promise<{ ok: boolean }> {
+  return apiClient.delete(`/api/admin/collections/${id}`);
+}
+
+export async function adminAddCollectionResult(
+  collectionId: string,
+  resultId: string
+): Promise<{ ok: boolean; position: number }> {
+  return apiClient.post(`/api/admin/collections/${collectionId}/results`, {
+    resultId,
+  });
+}
+
+export async function adminRemoveCollectionResult(
+  collectionId: string,
+  resultId: string
+): Promise<{ ok: boolean }> {
+  return apiClient.delete(
+    `/api/admin/collections/${collectionId}/results/${resultId}`
+  );
+}
+
+export async function adminReorderCollectionResults(
+  collectionId: string,
+  resultIds: string[]
+): Promise<{ ok: boolean }> {
+  return apiClient.put(
+    `/api/admin/collections/${collectionId}/results/reorder`,
+    { resultIds }
+  );
+}
+
+export async function adminReorderCollections(
+  collectionIds: string[]
+): Promise<{ ok: boolean }> {
+  return apiClient.put("/api/admin/collections/reorder", { collectionIds });
+}
+
+// ── Admin Inference ──────────────────────────────────────────────────
+
+import type { InferenceData } from "@/data/admin/inference-types";
+
+export async function adminGetInferenceData(period = 30): Promise<InferenceData> {
+  return apiClient.get<InferenceData>(`/api/admin/inference?period=${period}`);
+}
+
 // ── Public Sharing (unauthenticated) ────────────────────────────────
 
 const API_BASE_URL =
@@ -352,6 +502,56 @@ export async function getPublicResultContent(
   const res = await fetch(url);
   if (!res.ok) {
     throw new Error(`Failed to fetch content: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function searchPublicResults(params?: {
+  q?: string;
+  tool?: string;
+  sort?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<import("@/data/result-types").PublicSearchResponse> {
+  const query = new URLSearchParams();
+  if (params?.q) query.set("q", params.q);
+  if (params?.tool && params.tool !== "all") query.set("tool", params.tool);
+  if (params?.sort) query.set("sort", params.sort);
+  if (params?.limit) query.set("limit", String(params.limit));
+  if (params?.offset) query.set("offset", String(params.offset));
+  const qs = query.toString();
+  const res = await fetch(
+    `${API_BASE_URL}/public/search${qs ? `?${qs}` : ""}`
+  );
+  if (!res.ok) {
+    throw new Error(`Failed to search public results: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function getPublicResults(params?: {
+  sort?: PublicResultSort;
+  limit?: number;
+  search?: string;
+}): Promise<PublicResultListItem[]> {
+  const query = new URLSearchParams();
+  if (params?.sort) query.set("sort", params.sort);
+  if (params?.limit) query.set("limit", String(params.limit));
+  if (params?.search) query.set("search", params.search);
+  const qs = query.toString();
+  const res = await fetch(
+    `${API_BASE_URL}/public/results${qs ? `?${qs}` : ""}`
+  );
+  if (!res.ok) {
+    throw new Error(`Failed to fetch public results: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function getPublicCollections(): Promise<PublicCollection[]> {
+  const res = await fetch(`${API_BASE_URL}/public/collections`);
+  if (!res.ok) {
+    throw new Error(`Failed to fetch collections: ${res.statusText}`);
   }
   return res.json();
 }

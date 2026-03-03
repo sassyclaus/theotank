@@ -7,6 +7,7 @@ import { adminAuth } from "./middleware/admin-auth";
 import theologians from "./routes/theologians";
 import teams from "./routes/teams";
 import results from "./routes/results";
+import usage from "./routes/usage";
 import reviewFilesRoute from "./routes/review-files";
 import admin from "./routes/admin";
 import publicRoutes from "./routes/public";
@@ -53,6 +54,7 @@ app.route("/api/admin", admin);
 app.route("/api/theologians", theologians);
 app.route("/api/teams", teams);
 app.route("/api/results", results);
+app.route("/api/usage", usage);
 app.route("/api/review-files", reviewFilesRoute);
 
 const port = Number(process.env.PORT) || 3001;

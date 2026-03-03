@@ -36,9 +36,9 @@ export const mockAuditLog: AuditEntry[] = [
     id: "audit-3",
     timestamp: "2026-02-17T16:44:01Z",
     admin: "sarah@theotank.com",
-    action: "user.bonus_credits",
+    action: "user.usage_override",
     target: "user:3312",
-    after: "+10 credits",
+    after: "ask: 100/mo",
     reason: "Welcome gift",
   },
   {

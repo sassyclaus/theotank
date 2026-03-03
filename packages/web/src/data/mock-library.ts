@@ -1,9 +1,9 @@
 // ── Types ────────────────────────────────────────────────────────────
 
-export type LibraryToolType = "ask" | "poll" | "review" | "research";
+export type LibraryToolType = "ask" | "poll" | "super_poll" | "review" | "research";
 export type LibraryItemStatus = "complete" | "processing" | "failed";
 export type LibraryTab = "my-library" | "explore";
-export type ExploreSortOption = "recent" | "most-viewed" | "most-saved";
+export type ExploreSortOption = "relevance" | "recent" | "most-viewed" | "most-saved";
 
 export interface PollBar {
   label: string;
@@ -13,6 +13,7 @@ export interface PollBar {
 export type LibraryPreview =
   | { type: "ask"; conclusion: string }
   | { type: "poll"; bars: PollBar[] }
+  | { type: "super_poll"; bars: PollBar[]; totalRespondents: number }
   | { type: "review"; grade: string }
   | { type: "research"; citedSourcesCount: number };
 
@@ -35,26 +36,6 @@ export interface CuratedCollection {
   coverColor: string;
 }
 
-export interface PublicResultItem {
-  id: string;
-  title: string;
-  tool: Exclude<LibraryToolType, "research">;
-  team: string;
-  date: string;
-  previewExcerpt: string;
-  viewCount: number;
-  saveCount: number;
-  isSaved: boolean;
-}
-
-export interface TrendingLibraryItem {
-  id: string;
-  title: string;
-  tool: Exclude<LibraryToolType, "research">;
-  team: string;
-  viewCount: number;
-}
-
 export interface LibraryFilterOption {
   id: string;
   label: string;
@@ -64,9 +45,12 @@ export interface LibraryFilterOption {
 
 import { MessageCircle, BarChart3, FileCheck, BookOpen, type LucideIcon } from "lucide-react";
 
+import { Globe } from "lucide-react";
+
 export const TOOL_ICONS: Record<LibraryToolType, LucideIcon> = {
   ask: MessageCircle,
   poll: BarChart3,
+  super_poll: Globe,
   review: FileCheck,
   research: BookOpen,
 };
@@ -74,6 +58,7 @@ export const TOOL_ICONS: Record<LibraryToolType, LucideIcon> = {
 export const TOOL_LABELS: Record<LibraryToolType, string> = {
   ask: "Ask",
   poll: "Poll",
+  super_poll: "Super Poll",
   review: "Review",
   research: "Research",
 };
@@ -81,6 +66,7 @@ export const TOOL_LABELS: Record<LibraryToolType, string> = {
 export const TOOL_COLORS: Record<LibraryToolType, { bg: string; text: string }> = {
   ask: { bg: "bg-teal/10", text: "text-teal" },
   poll: { bg: "bg-teal/10", text: "text-teal" },
+  super_poll: { bg: "bg-teal/10", text: "text-teal" },
   review: { bg: "bg-teal/10", text: "text-teal" },
   research: { bg: "bg-oxblood/10", text: "text-oxblood" },
 };
@@ -254,143 +240,3 @@ export const curatedCollections: CuratedCollection[] = [
   },
 ];
 
-// ── Public Results (Explore) ────────────────────────────────────────
-
-export const publicResults: PublicResultItem[] = [
-  {
-    id: "pr-1",
-    title: "What is the relationship between divine sovereignty and human free will?",
-    tool: "ask",
-    team: "All Theologians",
-    date: "Feb 21, 2026",
-    previewExcerpt:
-      "The panel explored four major positions: Calvinist compatibilism, Arminian libertarianism, Molinist middle knowledge, and open theism. Augustine and Aquinas grounded sovereignty in...",
-    viewCount: 1240,
-    saveCount: 89,
-    isSaved: false,
-  },
-  {
-    id: "pr-2",
-    title: "Should the church embrace a post-millennial eschatology?",
-    tool: "poll",
-    team: "Reformers",
-    date: "Feb 20, 2026",
-    previewExcerpt:
-      "Results split along predictable lines: Puritan voices favored post-millennialism, while dispensationalist-leaning panelists held firm to premillennialism...",
-    viewCount: 870,
-    saveCount: 42,
-    isSaved: false,
-  },
-  {
-    id: "pr-3",
-    title: "Is the prosperity gospel a heresy or a distortion?",
-    tool: "ask",
-    team: "Modern Theologians",
-    date: "Feb 19, 2026",
-    previewExcerpt:
-      "The panel reached near-unanimous consensus that prosperity theology distorts the biblical witness, though they disagreed on whether 'heresy' was the appropriate theological category...",
-    viewCount: 2100,
-    saveCount: 156,
-    isSaved: true,
-  },
-  {
-    id: "pr-4",
-    title: "Review of 'The Cost of Discipleship' opening argument",
-    tool: "review",
-    team: "Modern Theologians",
-    date: "Feb 18, 2026",
-    previewExcerpt:
-      "Bonhoeffer's distinction between cheap and costly grace received high marks for rhetorical force. Barth praised the christological grounding while Tillich questioned the...",
-    viewCount: 560,
-    saveCount: 34,
-    isSaved: false,
-  },
-  {
-    id: "pr-5",
-    title: "How should Christians think about the ethics of AI?",
-    tool: "ask",
-    team: "All Theologians",
-    date: "Feb 17, 2026",
-    previewExcerpt:
-      "The panel drew on imago Dei theology, natural law, and the doctrine of vocation to frame the ethical landscape. Aquinas's framework of proportionate means proved surprisingly relevant...",
-    viewCount: 3400,
-    saveCount: 210,
-    isSaved: false,
-  },
-  {
-    id: "pr-6",
-    title: "Is liturgical worship more biblical than contemporary worship?",
-    tool: "poll",
-    team: "All Theologians",
-    date: "Feb 16, 2026",
-    previewExcerpt:
-      "A slight majority favored liturgical forms as more connected to the early church, though several panelists argued that the regulative principle supports simplicity over elaborate ritual...",
-    viewCount: 980,
-    saveCount: 67,
-    isSaved: false,
-  },
-  {
-    id: "pr-7",
-    title: "What does the church owe to the poor?",
-    tool: "ask",
-    team: "Catholic Doctors",
-    date: "Feb 15, 2026",
-    previewExcerpt:
-      "Catholic social teaching figured prominently, with Aquinas's doctrine of superfluous goods and the preferential option for the poor framing the discussion. Liberation theology voices...",
-    viewCount: 740,
-    saveCount: 51,
-    isSaved: false,
-  },
-  {
-    id: "pr-8",
-    title: "Review of local church's statement of faith",
-    tool: "review",
-    team: "Reformers",
-    date: "Feb 14, 2026",
-    previewExcerpt:
-      "The panel gave the document a B overall, noting strong Christological foundations but flagging an underdeveloped pneumatology and vague language on sacraments...",
-    viewCount: 320,
-    saveCount: 18,
-    isSaved: false,
-  },
-];
-
-// ── Trending ────────────────────────────────────────────────────────
-
-export const trendingLibraryItems: TrendingLibraryItem[] = [
-  {
-    id: "tl-1",
-    title: "How should Christians think about the ethics of AI?",
-    tool: "ask",
-    team: "All Theologians",
-    viewCount: 3400,
-  },
-  {
-    id: "tl-2",
-    title: "Is the prosperity gospel a heresy or a distortion?",
-    tool: "ask",
-    team: "Modern Theologians",
-    viewCount: 2100,
-  },
-  {
-    id: "tl-3",
-    title: "Divine sovereignty and human free will",
-    tool: "ask",
-    team: "All Theologians",
-    viewCount: 1240,
-  },
-  {
-    id: "tl-4",
-    title: "Is liturgical worship more biblical than contemporary?",
-    tool: "poll",
-    team: "All Theologians",
-    viewCount: 980,
-  },
-  {
-    id: "tl-5",
-    title: "Should the church embrace post-millennial eschatology?",
-    tool: "poll",
-    team: "Reformers",
-    viewCount: 870,
-  },
-];

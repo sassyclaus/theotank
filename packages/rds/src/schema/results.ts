@@ -16,12 +16,20 @@ import { jobs } from "./jobs";
 import { theologians } from "./theologians";
 import { teamSnapshots } from "./teams";
 import { reviewFiles } from "./review-files";
+import { vector } from "./custom-types";
 
 // ── Enums ──────────────────────────────────────────────────────────────
+
+export const moderationStatusEnum = pgEnum("moderation_status", [
+  "approved",
+  "pending_review",
+  "removed",
+]);
 
 export const resultToolTypeEnum = pgEnum("result_tool_type", [
   "ask",
   "poll",
+  "super_poll",
   "review",
   "research",
 ]);
@@ -113,6 +121,7 @@ export const results = pgTable(
       onDelete: "restrict",
     }),
     models: jsonb("models"),
+    tokenUsage: jsonb("token_usage"),
     contentKey: text("content_key"),
     pdfKey: text("pdf_key"),
     shareImageKey: text("share_image_key"),
@@ -125,7 +134,11 @@ export const results = pgTable(
     isPrivate: boolean("is_private").default(false).notNull(),
     hiddenAt: timestamp("hidden_at", { withTimezone: true }),
     errorMessage: text("error_message"),
+    moderationStatus: moderationStatusEnum("moderation_status")
+      .default("approved")
+      .notNull(),
     viewCount: integer("view_count").default(0).notNull(),
+    embeddedQuestion: vector("embedded_question", { dimensions: 1536 }),
     saveCount: integer("save_count").default(0).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
@@ -151,6 +164,7 @@ export const results = pgTable(
     index("results_algorithm_version_id_idx").on(table.algorithmVersionId),
     index("results_result_type_id_idx").on(table.resultTypeId),
     index("results_review_file_id_idx").on(table.reviewFileId),
+    index("results_moderation_status_idx").on(table.moderationStatus),
   ]
 );
 

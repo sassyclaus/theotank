@@ -5,7 +5,7 @@ import { uploadPublicBuffer } from "../s3-public";
 export async function tryGenerateShareImage(
   resultId: string,
   contentKey: string,
-  toolType: "ask" | "poll" | "review",
+  toolType: "ask" | "poll" | "super_poll" | "review",
   content: unknown,
   metadata: ShareImageMetadata,
   log: Logger,

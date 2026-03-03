@@ -1,19 +1,17 @@
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { Badge } from "@/components/admin/ui/Badge";
 import { SearchFilter } from "@/components/admin/ui/SearchFilter";
 import { DataTable } from "@/components/admin/ui/DataTable";
 import { StatCard } from "@/components/admin/ui/StatCard";
-import {
-  publicLibraryItems,
-  contentStats,
-  type PublicLibraryItem,
-} from "@/data/admin/mock-content";
+import { useAdminPublicLibrary } from "@/hooks/useAdminContent";
+import type { PublicLibraryItem } from "@/data/admin/content-types";
 
 const toolVariant: Record<string, "info" | "success" | "warning" | "neutral"> =
   {
     ask: "info",
     poll: "success",
     review: "warning",
+    super_poll: "info",
     research: "neutral",
   };
 
@@ -21,13 +19,20 @@ const toolLabel: Record<string, string> = {
   ask: "Ask",
   poll: "Poll",
   review: "Review",
+  super_poll: "Super Poll",
   research: "Research",
 };
 
 const statusVariant: Record<string, "success" | "danger" | "warning"> = {
-  public: "success",
+  approved: "success",
   removed: "danger",
-  flagged: "warning",
+  pending_review: "warning",
+};
+
+const statusLabel: Record<string, string> = {
+  approved: "Public",
+  removed: "Removed",
+  pending_review: "Flagged",
 };
 
 const columns = [
@@ -40,28 +45,30 @@ const columns = [
     ),
   },
   {
-    key: "tool",
+    key: "toolType",
     header: "Tool",
     render: (row: PublicLibraryItem) => (
-      <Badge variant={toolVariant[row.tool]}>{toolLabel[row.tool]}</Badge>
+      <Badge variant={toolVariant[row.toolType] ?? "neutral"}>
+        {toolLabel[row.toolType] ?? row.toolType}
+      </Badge>
     ),
   },
   {
-    key: "views",
+    key: "viewCount",
     header: "Views",
-    render: (row: PublicLibraryItem) => row.views.toLocaleString(),
+    render: (row: PublicLibraryItem) => row.viewCount.toLocaleString(),
   },
   {
-    key: "unlocks",
-    header: "Unlocks",
-    render: (row: PublicLibraryItem) => row.unlocks.toLocaleString(),
+    key: "saveCount",
+    header: "Saves",
+    render: (row: PublicLibraryItem) => row.saveCount.toLocaleString(),
   },
   {
-    key: "status",
+    key: "moderationStatus",
     header: "Status",
     render: (row: PublicLibraryItem) => (
-      <Badge variant={statusVariant[row.status]}>
-        {row.status.charAt(0).toUpperCase() + row.status.slice(1)}
+      <Badge variant={statusVariant[row.moderationStatus] ?? "neutral"}>
+        {statusLabel[row.moderationStatus] ?? row.moderationStatus}
       </Badge>
     ),
   },
@@ -69,16 +76,10 @@ const columns = [
 
 export function PublicLibrary() {
   const [search, setSearch] = useState("");
+  const { data, isLoading } = useAdminPublicLibrary({ search: search || undefined });
 
-  const filtered = useMemo(() => {
-    if (!search) return publicLibraryItems;
-    const q = search.toLowerCase();
-    return publicLibraryItems.filter(
-      (item) =>
-        item.title.toLowerCase().includes(q) ||
-        item.tool.toLowerCase().includes(q),
-    );
-  }, [search]);
+  const items = data?.items ?? [];
+  const stats = data?.stats;
 
   return (
     <div className="space-y-5">
@@ -86,21 +87,21 @@ export function PublicLibrary() {
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard
           label="Total Items"
-          value={contentStats.total.toLocaleString()}
+          value={stats ? stats.total.toLocaleString() : "—"}
         />
         <StatCard
           label="Added This Week"
-          value={`+${contentStats.addedThisWeek}`}
-          change={`${contentStats.addedThisWeek} new`}
+          value={stats ? `+${stats.addedThisWeek}` : "—"}
+          change={stats ? `${stats.addedThisWeek} new` : undefined}
           changeType="positive"
         />
         <StatCard
           label="Removed This Week"
-          value={String(contentStats.removedThisWeek)}
-          change={`${contentStats.removedThisWeek} removed`}
+          value={stats ? String(stats.removedThisWeek) : "—"}
+          change={stats ? `${stats.removedThisWeek} removed` : undefined}
           changeType="negative"
         />
-        <StatCard label="Opt-Out Rate" value={contentStats.optOutRate} />
+        <StatCard label="Opt-Out Rate" value={stats?.privateRate ?? "—"} />
       </div>
 
       {/* Search */}
@@ -111,11 +112,15 @@ export function PublicLibrary() {
       />
 
       {/* Table */}
-      <DataTable<PublicLibraryItem>
-        columns={columns}
-        data={filtered}
-        keyExtractor={(row) => row.id}
-      />
+      {isLoading ? (
+        <div className="py-8 text-center text-sm text-gray-500">Loading...</div>
+      ) : (
+        <DataTable<PublicLibraryItem>
+          columns={columns}
+          data={items}
+          keyExtractor={(row) => row.id}
+        />
+      )}
     </div>
   );
 }

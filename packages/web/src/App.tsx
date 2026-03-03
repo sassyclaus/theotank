@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect } from "react";
-import { Routes, Route, Navigate } from "react-router";
+import { Routes, Route, Navigate, useParams } from "react-router";
 import { useAuth, useClerk } from "@clerk/clerk-react";
 import { Layout } from "@/components/layout/Layout";
 import { AdminLayout } from "@/components/admin/layout/AdminLayout";
@@ -36,7 +36,7 @@ const AdminCollectionDetail = lazy(
 );
 const AdminJobs = lazy(() => import("@/pages/admin/Jobs"));
 const AdminJobDetail = lazy(() => import("@/pages/admin/JobDetail"));
-const AdminSystem = lazy(() => import("@/pages/admin/System"));
+const AdminInference = lazy(() => import("@/pages/admin/Inference"));
 const AdminAuditLog = lazy(() => import("@/pages/admin/AuditLog"));
 
 export default function App() {
@@ -176,10 +176,10 @@ export default function App() {
           }
         />
         <Route
-          path="system"
+          path="inference"
           element={
             <Suspense fallback={null}>
-              <AdminSystem />
+              <AdminInference />
             </Suspense>
           }
         />
@@ -194,7 +194,7 @@ export default function App() {
         <Route path="*" element={<NotFound />} />
       </Route>
       <Route element={<Layout />}>
-        <Route index element={<Navigate to="/roundtable" replace />} />
+        <Route index element={<Home />} />
         <Route path="roundtable" element={<Roundtable />} />
         <Route path="research" element={<Research />} />
         <Route path="library" element={<Library />} />
@@ -202,9 +202,14 @@ export default function App() {
         <Route path="library/:id" element={<Result />} />
         <Route path="theologians" element={<Theologians />} />
         <Route path="theologians/:slug" element={<TheologianDetail />} />
-        <Route path="share/:id" element={<SharedResult />} />
+        <Route path="share/:id" element={<ShareRedirect />} />
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>
   );
+}
+
+function ShareRedirect() {
+  const { id } = useParams<{ id: string }>();
+  return <Navigate to={`/library/${id}`} replace />;
 }
