@@ -12,6 +12,7 @@ import { logProgress } from "../progress";
 import { downloadBuffer, uploadJson } from "../s3";
 import { colorForTradition } from "../lib/tradition-colors";
 import { withResultContext, failBoth, type ResultContext } from "./scaffold";
+import type { ReviewAlgoConfig } from "../default-configs";
 import { tryGenerateShareImage } from "../lib/generate-share-image";
 import {
   buildReviewSystemPrompt,
@@ -30,7 +31,7 @@ import type {
 } from "../types/review";
 
 export const processReview = withResultContext("review", async (job: Job, ctx: ResultContext) => {
-  const { result, algoVersion, log } = ctx;
+  const { result, algoConfig: rawConfig, log } = ctx;
   const db = getDb();
   const payload = job.payload as ReviewJobPayload;
   const { resultId } = payload;
@@ -41,12 +42,7 @@ export const processReview = withResultContext("review", async (job: Job, ctx: R
     tool_type: "review",
   };
 
-  const algoConfig = algoVersion.config as {
-    defaultModels: {
-      review: { model: string; provider: string };
-      synthesis: { model: string; provider: string };
-    };
-  };
+  const algoConfig = rawConfig as ReviewAlgoConfig;
 
   // Load review file and its extracted text
   const inputPayload = result.inputPayload as {

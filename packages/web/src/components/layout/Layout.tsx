@@ -3,6 +3,7 @@ import { Outlet, useLocation } from "react-router";
 import { useEffect } from "react";
 import { TopNav } from "./TopNav";
 import { MobileMenu } from "./MobileMenu";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 export function Layout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -22,7 +23,9 @@ export function Layout() {
         <MobileMenu open={mobileMenuOpen} onClose={() => setMobileMenuOpen(false)} />
       </div>
       <main>
-        <Outlet />
+        <ErrorBoundary key={location.pathname}>
+          <Outlet />
+        </ErrorBoundary>
       </main>
     </div>
   );

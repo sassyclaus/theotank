@@ -1,6 +1,5 @@
 ---
-// import WaitlistForm from "../islands/WaitlistForm";
-// import SocialProofCounter from "../islands/SocialProofCounter";
+import SocialProofCounter from "../islands/SocialProofCounter";
 import { theologians } from "../../data/theologians";
 
 // Pick 12 theologians for the ambient mosaic
@@ -28,11 +27,15 @@ const mosaicTheologians = theologians.filter((_, i) => i % 3 === 0).slice(0, 12)
       church history.
     </p>
 
-    <!-- Email capture (disabled for demo) -->
-    <div class="mx-auto mt-10 max-w-md">
-      <p class="rounded-lg bg-surface px-5 py-3 text-sm font-medium text-text-secondary">
-        Waitlist opening soon
-      </p>
+    <!-- CTA button → scrolls to bottom form -->
+    <div class="mx-auto mt-10 max-w-md text-center">
+      <a
+        href="#waitlist"
+        class="inline-block rounded-lg bg-gold px-8 py-3 font-sans text-sm font-semibold text-white transition-colors hover:bg-gold/90"
+      >
+        Join the Waitlist
+      </a>
+      <SocialProofCounter client:idle />
     </div>
   </div>
 

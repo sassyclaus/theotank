@@ -13,11 +13,11 @@ deploy-api:
 
 # Deploy Worker service to Railway
 deploy-worker:
-	railway up --service worker --detach
+	railway up --service Worker --detach
 
 # Deploy Cron service to Railway
 deploy-cron:
-	railway up --service cron --detach
+	railway up --service Cron --detach
 
 # Deploy all Railway services
 deploy:

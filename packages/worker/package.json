@@ -5,6 +5,7 @@
   "type": "module",
   "dependencies": {
     "@aws-sdk/client-s3": "^3.996.0",
+    "@clerk/backend": "^1.24.0",
     "@theotank/rds": "workspace:*",
     "drizzle-orm": "^0.38.0",
     "hono": "^4.7.0",
@@ -12,6 +13,7 @@
     "pdf-parse": "^1.1.1",
     "pdfkit": "^0.17.2",
     "pino": "^10.3.1",
+    "resend": "^4.1.0",
     "satori": "^0.19.2",
     "sharp": "^0.34.5"
   },

@@ -7,12 +7,18 @@ import { logProgress } from "../progress";
 import { uploadJson } from "../s3";
 import { colorForTradition } from "../lib/tradition-colors";
 import { withResultContext, failBoth, type ResultContext } from "./scaffold";
+import type { AskAlgoConfig } from "../default-configs";
 import { tryGenerateShareImage } from "../lib/generate-share-image";
 import {
   buildPerspectiveSystemPrompt,
   buildPerspectiveUserPrompt,
   perspectiveJsonSchema,
 } from "../prompts/ask-perspective";
+import {
+  buildAskCritiqueSystemPrompt,
+  buildAskCritiqueUserPrompt,
+  askCritiqueJsonSchema,
+} from "../prompts/ask-critique";
 import {
   buildReactionSystemPrompt,
   buildReactionUserPrompt,
@@ -27,13 +33,15 @@ import type {
   AskJobPayload,
   AskPerspectiveEntry,
   AskContent,
+  AskCritiqueMetrics,
   LLMPerspectiveResponse,
+  LLMAskCritiqueResponse,
   LLMReactionResponse,
   LLMSynthesisResponse,
 } from "../types/ask";
 
 export const processAsk = withResultContext("ask", async (job: Job, ctx: ResultContext) => {
-  const { result, algoVersion, log } = ctx;
+  const { result, algoConfig: rawConfig, log } = ctx;
   const db = getDb();
   const payload = job.payload as AskJobPayload;
   const { resultId } = payload;
@@ -44,13 +52,7 @@ export const processAsk = withResultContext("ask", async (job: Job, ctx: ResultC
     tool_type: "ask",
   };
 
-  const algoConfig = algoVersion.config as {
-    defaultModels: {
-      perspective: { model: string; provider: string };
-      reaction: { model: string; provider: string };
-      synthesis: { model: string; provider: string };
-    };
-  };
+  const algoConfig = rawConfig as AskAlgoConfig;
 
   // Load team snapshot → theologian details
   if (!result.teamSnapshotId) {
@@ -118,6 +120,9 @@ export const processAsk = withResultContext("ask", async (job: Job, ctx: ResultC
                 bio: t.bio,
                 voiceStyle: t.voiceStyle,
                 tradition: t.tradition,
+                keyWorks: t.keyWorks ?? [],
+                tagline: t.tagline ?? null,
+                era: t.era ?? null,
               }),
             },
             { role: "user", content: buildPerspectiveUserPrompt(question) },
@@ -157,6 +162,82 @@ export const processAsk = withResultContext("ask", async (job: Job, ctx: ResultC
         relevantWorks: parsed.relevant_works,
       } satisfies AskPerspectiveEntry;
     }),
+  );
+
+  // Per-theologian critique pass (parallel, soft-fail)
+  const critiqueModel = algoConfig.defaultModels.critique?.model ?? algoConfig.defaultModels.perspective.model;
+
+  await logProgress(resultId, "Verifying accuracy of perspectives...");
+
+  const critiqueMetrics: AskCritiqueMetrics = {
+    total: 0,
+    corrected: 0,
+    softFailures: 0,
+    strengthBreakdown: { none: 0, minor: 0, major: 0 },
+  };
+
+  await Promise.all(
+    perspectives.map(async (entry) => {
+      const t = validTheologians.find(
+        (th) => th.name === entry.theologian.name,
+      );
+      if (!t) return;
+
+      try {
+        const response = await ai.chat(
+          {
+            model: critiqueModel,
+            messages: [
+              {
+                role: "system",
+                content: buildAskCritiqueSystemPrompt(),
+              },
+              {
+                role: "user",
+                content: buildAskCritiqueUserPrompt({
+                  theologianName: t.name,
+                  tradition: t.tradition,
+                  born: t.born,
+                  died: t.died,
+                  keyWorks: t.keyWorks ?? [],
+                  perspective: entry.perspective,
+                  relevantWorks: entry.relevantWorks,
+                }),
+              },
+            ],
+            response_format: {
+              type: "json_schema",
+              json_schema: askCritiqueJsonSchema,
+            },
+          },
+          { label: `ask-critique:${t.name}`, log, attribution },
+        );
+
+        const content = response.choices[0]?.message?.content;
+        if (content) {
+          const critique: LLMAskCritiqueResponse = JSON.parse(content);
+          critiqueMetrics.total++;
+          critiqueMetrics.strengthBreakdown[critique.critique_strength]++;
+
+          if (!critique.is_accurate) {
+            entry.perspective = critique.corrected_perspective;
+            entry.relevantWorks = critique.corrected_works;
+            critiqueMetrics.corrected++;
+          }
+        }
+      } catch {
+        // Critique soft failure — proceed with original perspective
+        critiqueMetrics.total++;
+        critiqueMetrics.softFailures++;
+      }
+    }),
+  );
+
+  log.info({ critiqueMetrics }, "Ask critique pass summary");
+  await logProgress(
+    resultId,
+    `Accuracy check: ${critiqueMetrics.corrected} of ${critiqueMetrics.total} perspectives were refined`,
+    { critiqueMetrics },
   );
 
   // Per-theologian reactions (parallel)
@@ -285,6 +366,7 @@ export const processAsk = withResultContext("ask", async (job: Job, ctx: ResultC
       keyDisagreements: synthesis.key_disagreements,
       sermonIdeas: synthesis.sermon_ideas,
     },
+    critiqueMetrics,
   };
 
   const now = new Date();
@@ -330,6 +412,7 @@ export const processAsk = withResultContext("ask", async (job: Job, ctx: ResultC
       previewExcerpt,
       models: {
         perspective: perspectiveModel,
+        critique: critiqueModel,
         reaction: reactionModel,
         synthesis: synthesisModel,
       },

@@ -4,6 +4,8 @@ import { waitlistSignups } from "@theotank/rds/schema";
 import { eq, sql, count } from "drizzle-orm";
 import { randomBytes, createHash } from "crypto";
 import type { AppEnv } from "../../lib/types";
+import { config } from "../../config";
+import { sendWaitlistConfirmEmail } from "../../lib/email";
 
 const app = new Hono<AppEnv>();
 
@@ -12,7 +14,7 @@ function generateReferralCode(): string {
 }
 
 function generateConfirmToken(email: string): string {
-  const secret = process.env.WAITLIST_TOKEN_SECRET || "waitlist-dev-secret";
+  const secret = config.waitlistTokenSecret;
   return createHash("sha256").update(`${email}:${secret}`).digest("hex").slice(0, 32);
 }
 
@@ -92,9 +94,12 @@ app.post("/", async (c) => {
     utmCampaign: body.utmCampaign || null,
   });
 
-  // TODO: Send confirmation email with token link
-  // const token = generateConfirmToken(email);
-  // await sendConfirmationEmail(email, token);
+  const token = generateConfirmToken(email);
+  const confirmUrl = `${config.apiUrl}/public/waitlist/confirm/${token}?email=${encodeURIComponent(email)}`;
+  const log = c.get("log");
+  sendWaitlistConfirmEmail({ to: email, confirmUrl, queuePosition, log }).catch(
+    (err) => log.warn({ err, email }, "Unhandled error sending waitlist confirmation email"),
+  );
 
   return c.json({ queuePosition, referralCode }, 201);
 });
@@ -118,7 +123,7 @@ app.get("/confirm/:token", async (c) => {
     .set({ emailConfirmed: true })
     .where(eq(waitlistSignups.email, email));
 
-  const siteUrl = process.env.SITE_URL || "http://localhost:4321";
+  const siteUrl = config.siteUrl;
   return c.redirect(`${siteUrl}?confirmed=1`);
 });
 

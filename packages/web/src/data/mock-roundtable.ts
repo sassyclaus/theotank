@@ -11,13 +11,6 @@ export interface RecentLibraryItem {
   preview: string;
 }
 
-export interface SimilarResult {
-  id: string;
-  question: string;
-  team: string;
-  date: string;
-}
-
 export interface ModeConfig {
   label: string;
   description: string;
@@ -71,27 +64,6 @@ export const recentLibraryItems: RecentLibraryItem[] = [
     date: "Feb 12, 2026",
     preview:
       "Luther commended the accessible prose but questioned the natural-law framework. Calvin noted the absence of explicit covenant theology. Knox found the ecumenical tone admirable but insufficiently Reformed...",
-  },
-];
-
-export const similarResults: SimilarResult[] = [
-  {
-    id: "s1",
-    question: "What did the early church believe about justification by faith?",
-    team: "Church Fathers",
-    date: "Feb 18, 2026",
-  },
-  {
-    id: "s2",
-    question: "How do Augustine and Luther compare on justification?",
-    team: "All Theologians",
-    date: "Feb 10, 2026",
-  },
-  {
-    id: "s3",
-    question: "Was justification by faith alone a Reformation invention?",
-    team: "Reformers",
-    date: "Jan 28, 2026",
   },
 ];
 

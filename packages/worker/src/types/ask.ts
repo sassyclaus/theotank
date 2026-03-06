@@ -27,12 +27,34 @@ export interface AskContent {
   question: string;
   perspectives: AskPerspectiveEntry[];
   synthesis: AskSynthesis;
+  critiqueMetrics?: AskCritiqueMetrics;
 }
 
 export interface LLMPerspectiveResponse {
   perspective: string;
   key_themes: string[];
   relevant_works: string[];
+}
+
+export interface LLMAskCritiqueResponse {
+  is_accurate: boolean;
+  position_issues: string;
+  citation_issues: string;
+  anachronism_issues: string;
+  corrected_perspective: string;
+  corrected_works: string[];
+  critique_strength: "none" | "minor" | "major";
+}
+
+export interface AskCritiqueMetrics {
+  total: number;
+  corrected: number;
+  softFailures: number;
+  strengthBreakdown: {
+    none: number;
+    minor: number;
+    major: number;
+  };
 }
 
 export interface LLMReactionResponse {

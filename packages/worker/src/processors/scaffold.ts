@@ -1,15 +1,17 @@
 import { getDb } from "@theotank/rds/db";
-import { results, algorithmVersions, jobs } from "@theotank/rds/schema";
-import { eq, and } from "drizzle-orm";
+import { results, jobs, users } from "@theotank/rds/schema";
+import { eq } from "drizzle-orm";
 import type { Job } from "@theotank/rds/schema";
 import type { Logger } from "../lib/logger";
 import { ai } from "../lib/openai";
+import { sendResultCompletedEmail, getEmailFromClerk } from "../lib/email";
+import { getDefaultConfig, ALGO_VERSIONS, type AlgoConfig, type ToolType } from "../default-configs";
 
 // ── Types ────────────────────────────────────────────────────────────
 
 export interface ResultContext {
   result: typeof results.$inferSelect;
-  algoVersion: typeof algorithmVersions.$inferSelect;
+  algoConfig: AlgoConfig;
   log: Logger;
 }
 
@@ -33,8 +35,6 @@ export async function failBoth(
 
 // ── withResultContext ────────────────────────────────────────────────
 
-type ToolType = "ask" | "poll" | "super_poll" | "review" | "research";
-
 export function withResultContext(
   toolType: ToolType,
   coreFn: (job: Job, ctx: ResultContext) => Promise<void>,
@@ -55,34 +55,19 @@ export function withResultContext(
 
     log = log.child({ resultId, userId: result.userId });
 
-    // 2. Load active algorithm version
-    const [algoVersion] = await db
-      .select()
-      .from(algorithmVersions)
-      .where(
-        and(
-          eq(algorithmVersions.toolType, toolType),
-          eq(algorithmVersions.isActive, true),
-        ),
-      );
-    if (!algoVersion) {
-      await failBoth(resultId, job.id, `No active algorithm version for ${toolType}`);
-      return;
-    }
-
-    // 3. Mark result as processing
+    // 2. Mark result as processing with version string from code
     await db
       .update(results)
       .set({
         status: "processing",
-        algorithmVersionId: algoVersion.id,
+        algorithmVersion: ALGO_VERSIONS[toolType],
         updatedAt: new Date(),
       })
       .where(eq(results.id, resultId));
 
-    // 4. Run core logic — any unhandled error triggers failBoth
+    // 3. Run core logic — any unhandled error triggers failBoth
     try {
-      await coreFn(job, { result, algoVersion, log });
+      await coreFn(job, { result, algoConfig: getDefaultConfig(toolType), log });
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Unknown processing error";
@@ -120,6 +105,37 @@ export function withResultContext(
       }
     } catch (err) {
       log.warn({ err }, "Failed to embed question for search (non-blocking)");
+    }
+
+    // 6. Send completion notification email (non-blocking)
+    try {
+      const [completedResult] = await db
+        .select()
+        .from(results)
+        .where(eq(results.id, resultId));
+
+      // Look up user email: DB first, Clerk API fallback
+      const [user] = await db
+        .select()
+        .from(users)
+        .where(eq(users.clerkId, result.userId));
+      let email = user?.email ?? null;
+      if (!email) {
+        email = await getEmailFromClerk(result.userId, log);
+      }
+
+      if (email) {
+        await sendResultCompletedEmail({
+          to: email,
+          resultId,
+          title: result.title,
+          toolType,
+          previewExcerpt: completedResult?.previewExcerpt ?? null,
+          log,
+        });
+      }
+    } catch (err) {
+      log.warn({ err }, "Failed to send completion email (non-blocking)");
     }
   };
 }

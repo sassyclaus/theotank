@@ -11,6 +11,7 @@ import { logProgress } from "../progress";
 import { uploadJson } from "../s3";
 import { colorForTradition } from "../lib/tradition-colors";
 import { withResultContext, failBoth, type ResultContext } from "./scaffold";
+import type { PollAlgoConfig } from "../default-configs";
 import { tryGenerateShareImage } from "../lib/generate-share-image";
 import {
   buildPollSystemPrompt,
@@ -50,7 +51,7 @@ const POLL_BATCH_SIZE = 20;
 // ── Main processor ─────────────────────────────────────────────────
 
 export const processPoll = withResultContext("poll", async (job: Job, ctx: ResultContext) => {
-  const { result, algoVersion, log } = ctx;
+  const { result, algoConfig: rawConfig, log } = ctx;
   const db = getDb();
   const payload = job.payload as PollJobPayload;
   const { resultId } = payload;
@@ -61,13 +62,7 @@ export const processPoll = withResultContext("poll", async (job: Job, ctx: Resul
     tool_type: "poll",
   };
 
-  const algoConfig = algoVersion.config as {
-    defaultModels: {
-      recall: { model: string; provider: string };
-      critique: { model: string; provider: string };
-      select: { model: string; provider: string };
-    };
-  };
+  const algoConfig = rawConfig as PollAlgoConfig;
 
   // Load team snapshot → theologian details
   if (!result.teamSnapshotId) {

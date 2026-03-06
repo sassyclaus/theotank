@@ -3,7 +3,6 @@ import { eq } from "../packages/rds/node_modules/drizzle-orm";
 import postgres from "../packages/rds/node_modules/postgres";
 import {
   theologians,
-  algorithmVersions,
   resultTypes,
   teams,
   teamMemberships,
@@ -30,9 +29,6 @@ async function main() {
 
     const allTheologians = await sourceDb.select().from(theologians);
     console.log(`Read ${allTheologians.length} theologians from local`);
-
-    const allAlgorithmVersions = await sourceDb.select().from(algorithmVersions);
-    console.log(`Read ${allAlgorithmVersions.length} algorithm versions from local`);
 
     const allResultTypes = await sourceDb.select().from(resultTypes);
     console.log(`Read ${allResultTypes.length} result types from local`);
@@ -93,23 +89,7 @@ async function main() {
       }
       console.log(`  Upserted ${allTheologians.length} theologians`);
 
-      // 2. Algorithm versions — upsert on (toolType, version)
-      for (const row of allAlgorithmVersions) {
-        await tx
-          .insert(algorithmVersions)
-          .values(row)
-          .onConflictDoUpdate({
-            target: [algorithmVersions.toolType, algorithmVersions.version],
-            set: {
-              description: row.description,
-              config: row.config,
-              isActive: row.isActive,
-            },
-          });
-      }
-      console.log(`  Upserted ${allAlgorithmVersions.length} algorithm versions`);
-
-      // 3. Result types — upsert on (kind, version)
+      // 2. Result types — upsert on (kind, version)
       for (const row of allResultTypes) {
         await tx
           .insert(resultTypes)
@@ -127,7 +107,7 @@ async function main() {
       }
       console.log(`  Upserted ${allResultTypes.length} result types`);
 
-      // 4. Teams — upsert on id (native only)
+      // 3. Teams — upsert on id (native only)
       for (const row of nativeTeams) {
         await tx
           .insert(teams)
@@ -147,7 +127,7 @@ async function main() {
       }
       console.log(`  Upserted ${nativeTeams.length} teams`);
 
-      // 5. Team memberships — onConflictDoNothing (composite PK)
+      // 4. Team memberships — onConflictDoNothing (composite PK)
       for (const row of nativeMemberships) {
         await tx
           .insert(teamMemberships)
@@ -156,7 +136,7 @@ async function main() {
       }
       console.log(`  Upserted ${nativeMemberships.length} team memberships`);
 
-      // 6. Team snapshots — upsert on (teamId, version)
+      // 5. Team snapshots — upsert on (teamId, version)
       for (const row of nativeSnapshots) {
         await tx
           .insert(teamSnapshots)

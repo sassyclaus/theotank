@@ -1,5 +1,5 @@
 import { getDb, closeDb } from "./db";
-import { theologians, teams, teamMemberships, resultTypes, algorithmVersions } from "./schema";
+import { theologians, teams, teamMemberships, resultTypes } from "./schema";
 import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -112,27 +112,6 @@ async function main() {
         });
     }
     console.log(`Upserted ${resultTypeRows.length} result types`);
-  }
-
-  // Algorithm versions — upsert on (toolType, version)
-  const algorithmVersionRows = loadJson<typeof algorithmVersions.$inferInsert>(
-    "algorithm-versions.json",
-  );
-  if (algorithmVersionRows.length > 0) {
-    for (const row of algorithmVersionRows) {
-      await db
-        .insert(algorithmVersions)
-        .values(row)
-        .onConflictDoUpdate({
-          target: [algorithmVersions.toolType, algorithmVersions.version],
-          set: {
-            description: row.description,
-            config: row.config,
-            isActive: row.isActive,
-          },
-        });
-    }
-    console.log(`Upserted ${algorithmVersionRows.length} algorithm versions`);
   }
 
   await closeDb();

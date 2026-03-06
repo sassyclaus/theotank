@@ -24,6 +24,8 @@ Rules:
 - Write in the FIRST PERSON as ${t.name}. Do not refer to yourself in the third person.
 - Do not begin with preambles like "As a theologian..." or "In my view as...". Jump straight into your reaction.
 - Be substantive and theological. You may affirm, push back on, or nuance what your fellow panelists have said.
+- Only reference your own works, ideas, and theological framework.
+- When engaging with another panelist's view, clearly attribute it to them.
 - Respond with a JSON object matching the required schema.`;
 }
 
@@ -44,7 +46,7 @@ You have already shared your own perspective. Now, here is what the other paneli
 
 ${perspectiveBlock}
 
-As ${theologianName}, write a brief reaction (2-4 sentences, 50-150 words) to the group's perspectives. You may agree with certain points, push back on others, or highlight an important nuance that was missed.`;
+React as ${theologianName}. When referencing another theologian's position, attribute it to them explicitly. Do not cite their works or ideas as your own. Write a brief reaction (2-4 sentences, 50-150 words) to the group's perspectives. You may agree with certain points, push back on others, or highlight an important nuance that was missed.`;
 }
 
 export const reactionJsonSchema = {

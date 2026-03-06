@@ -87,6 +87,16 @@ export interface AskContentResponse {
     keyDisagreements: string[];
     sermonIdeas: string[];
   };
+  critiqueMetrics?: {
+    total: number;
+    corrected: number;
+    softFailures: number;
+    strengthBreakdown: {
+      none: number;
+      minor: number;
+      major: number;
+    };
+  };
 }
 
 // ── Poll Content (from GET /api/results/:id/content) ────────────────

@@ -18,12 +18,12 @@ import { synthesize } from "./synthesize";
 import { buildCitations, uploadResearchContent } from "./build-content";
 
 export const processResearch = withResultContext("research", async (job: Job, ctx: ResultContext) => {
-  const { result, algoVersion, log } = ctx;
+  const { result, algoConfig: rawConfig, log } = ctx;
   const db = getDb();
   const payload = job.payload as ResearchJobPayload;
   const { resultId } = payload;
 
-  const algoConfig = algoVersion.config as ResearchAlgoConfig;
+  const algoConfig = rawConfig as ResearchAlgoConfig;
   const rc = algoConfig.retrieval;
 
   // Load theologian

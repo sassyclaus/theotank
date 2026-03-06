@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Globe } from "lucide-react";
@@ -48,13 +48,6 @@ export function RoundtableWorkspace() {
   // ── Result mutation ─────────────────────────────────────────────
   const createResult = useCreateResult();
 
-  // Set default to first native team once loaded
-  useEffect(() => {
-    if (selectedTeam === null && nativeTeams && nativeTeams.length > 0) {
-      setSelectedTeam(nativeTeams[0].id);
-    }
-  }, [selectedTeam, nativeTeams]);
-
   // Resolve selected team members for preview
   const selectedTeamInfo = (() => {
     if (!selectedTeam) return null;
@@ -67,8 +60,6 @@ export function RoundtableWorkspace() {
 
   // ── Ask state ───────────────────────────────────────────────────
   const [askQuestion, setAskQuestion] = useState("");
-  const [showNudge, setShowNudge] = useState(false);
-  const nudgeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Poll state ────────────────────────────────────────────────
   const [pollQuestion, setPollQuestion] = useState("");
@@ -78,18 +69,6 @@ export function RoundtableWorkspace() {
   const [selectedReviewFileId, setSelectedReviewFileId] = useState<string | null>(null);
   const [reviewFocusPrompt, setReviewFocusPrompt] = useState("");
 
-  // ── Ask nudge debounce ──────────────────────────────────────────
-  useEffect(() => {
-    if (nudgeTimer.current) clearTimeout(nudgeTimer.current);
-    if (askQuestion.length > 30) {
-      nudgeTimer.current = setTimeout(() => setShowNudge(true), 800);
-    } else {
-      setShowNudge(false);
-    }
-    return () => {
-      if (nudgeTimer.current) clearTimeout(nudgeTimer.current);
-    };
-  }, [askQuestion]);
 
   // ── Tab transition ──────────────────────────────────────────────
   const handleModeChange = useCallback(
@@ -208,7 +187,6 @@ export function RoundtableWorkspace() {
     setAskQuestion("");
     setPollQuestion("");
     setPollOptions(["", ""]);
-    setShowNudge(false);
     setWsPhase({ phase: "idle" });
   }, []);
 
@@ -281,7 +259,6 @@ export function RoundtableWorkspace() {
               <AskPanel
                 question={askQuestion}
                 onChange={setAskQuestion}
-                showNudge={showNudge}
               />
             )}
             {activeMode === "poll" && (

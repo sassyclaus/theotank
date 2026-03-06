@@ -1,27 +1,16 @@
 ---
-// import WaitlistForm from "../islands/WaitlistForm";
+import WaitlistForm from "../islands/WaitlistForm";
 ---
 
-<section class="py-20 md:py-28">
+<section id="waitlist" class="scroll-mt-8 py-20 md:py-28">
   <div class="mx-auto max-w-[800px] px-6">
     <h2 class="text-center font-serif text-2xl font-semibold text-text-primary md:text-3xl">
       Join the founding cohort.
     </h2>
 
-    <div class="mx-auto mt-6 max-w-[520px] text-center text-sm leading-relaxed text-text-secondary md:text-base">
-      <p>Early members get:</p>
-      <ul class="mt-3 space-y-1.5">
-        <li>Founding member pricing — locked in permanently</li>
-        <li>Early access before public launch</li>
-        <li>Input on the theologian roster and tool roadmap</li>
-      </ul>
-    </div>
-
-    <!-- Waitlist form (disabled for demo) -->
-    <div class="mx-auto mt-10 max-w-md text-center">
-      <p class="rounded-lg bg-surface px-5 py-3 text-sm font-medium text-text-secondary">
-        Waitlist opening soon
-      </p>
+    <!-- Waitlist form -->
+    <div class="mx-auto mt-8 max-w-md">
+      <WaitlistForm client:load />
     </div>
 
     <!-- Minimal footer -->

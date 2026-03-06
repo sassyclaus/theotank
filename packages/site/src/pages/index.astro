@@ -1,5 +1,6 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
+import ConfirmationBanner from "../components/islands/ConfirmationBanner";
 import Hero from "../components/sections/Hero.astro";
 import ToolShowcase from "../components/sections/ToolShowcase.astro";
 import ResearchTier from "../components/sections/ResearchTier.astro";
@@ -12,6 +13,7 @@ import FinalCTA from "../components/sections/FinalCTA.astro";
   title="TheoTank — The Theological Think Tank"
   description="350+ theologians. 2,000 years of church history. Ask a question, poll the roster, or get your sermon graded. Join the founding cohort."
 >
+  <ConfirmationBanner client:load />
   <Hero />
   <ToolShowcase />
   <ResearchTier />

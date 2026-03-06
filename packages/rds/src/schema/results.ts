@@ -6,7 +6,6 @@ import {
   integer,
   timestamp,
   jsonb,
-  varchar,
   pgEnum,
   primaryKey,
   index,
@@ -40,33 +39,6 @@ export const resultStatusEnum = pgEnum("result_status", [
   "completed",
   "failed",
 ]);
-
-// ── Algorithm Versions ─────────────────────────────────────────────────
-
-export const algorithmVersions = pgTable(
-  "algorithm_versions",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    toolType: resultToolTypeEnum("tool_type").notNull(),
-    version: varchar("version", { length: 50 }).notNull(),
-    description: text("description").notNull(),
-    config: jsonb("config").default({}).notNull(),
-    isActive: boolean("is_active").default(false).notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .defaultNow()
-      .notNull(),
-  },
-  (table) => [
-    unique("algorithm_versions_tool_type_version_unique").on(
-      table.toolType,
-      table.version
-    ),
-    index("algorithm_versions_tool_type_is_active_idx").on(
-      table.toolType,
-      table.isActive
-    ),
-  ]
-);
 
 // ── Result Types ──────────────────────────────────────────────────────
 
@@ -113,10 +85,7 @@ export const results = pgTable(
     }),
     status: resultStatusEnum("status").default("pending").notNull(),
     jobId: uuid("job_id").references(() => jobs.id, { onDelete: "set null" }),
-    algorithmVersionId: uuid("algorithm_version_id").references(
-      () => algorithmVersions.id,
-      { onDelete: "restrict" }
-    ),
+    algorithmVersion: text("algorithm_version"),
     resultTypeId: uuid("result_type_id").references(() => resultTypes.id, {
       onDelete: "restrict",
     }),
@@ -161,7 +130,6 @@ export const results = pgTable(
     index("results_team_snapshot_id_idx").on(table.teamSnapshotId),
     index("results_theologian_id_idx").on(table.theologianId),
     index("results_retried_from_id_idx").on(table.retriedFromId),
-    index("results_algorithm_version_id_idx").on(table.algorithmVersionId),
     index("results_result_type_id_idx").on(table.resultTypeId),
     index("results_review_file_id_idx").on(table.reviewFileId),
     index("results_moderation_status_idx").on(table.moderationStatus),
@@ -213,8 +181,6 @@ export const resultSaves = pgTable(
 
 // ── Types ──────────────────────────────────────────────────────────────
 
-export type AlgorithmVersion = typeof algorithmVersions.$inferSelect;
-export type NewAlgorithmVersion = typeof algorithmVersions.$inferInsert;
 export type ResultType = typeof resultTypes.$inferSelect;
 export type NewResultType = typeof resultTypes.$inferInsert;
 export type Result = typeof results.$inferSelect;

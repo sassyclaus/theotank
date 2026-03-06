@@ -33,6 +33,9 @@ export function TeamSelector({ value, onChange, onManageTeams }: TeamSelectorPro
               onChange={(e) => onChange(e.target.value)}
               className="h-10 w-full appearance-none rounded-lg border border-surface bg-white py-2 pl-3 pr-9 text-sm text-text-primary transition-colors focus:border-teal focus:outline-none focus:ring-2 focus:ring-teal/20"
             >
+              <option value="" disabled>
+                Select a panel…
+              </option>
               {nativeTeams && nativeTeams.length > 0 && (
                 <optgroup label="Native Teams">
                   {nativeTeams.map((team) => (

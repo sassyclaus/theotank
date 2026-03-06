@@ -8,6 +8,7 @@ const pageTitles: Record<string, string> = {
   "/admin/collections": "Collections",
   "/admin/jobs": "Jobs",
   "/admin/inference": "Inference",
+  "/admin/algorithms": "Algorithms",
 };
 
 function resolveTitle(pathname: string): string {

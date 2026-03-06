@@ -1,13 +1,11 @@
 import { Search } from "lucide-react";
-import { SimilarResultsNudge } from "./SimilarResultsNudge";
 
 interface AskPanelProps {
   question: string;
   onChange: (value: string) => void;
-  showNudge: boolean;
 }
 
-export function AskPanel({ question, onChange, showNudge }: AskPanelProps) {
+export function AskPanel({ question, onChange }: AskPanelProps) {
   return (
     <div className="space-y-4">
       <div className="relative">
@@ -22,7 +20,6 @@ export function AskPanel({ question, onChange, showNudge }: AskPanelProps) {
           className="w-full resize-none rounded-lg border border-surface bg-white py-3 pl-12 pr-4 text-sm text-text-primary placeholder:text-text-secondary/60 transition-colors focus:border-teal focus:outline-none focus:ring-2 focus:ring-teal/20"
         />
       </div>
-      {showNudge && <SimilarResultsNudge />}
     </div>
   );
 }

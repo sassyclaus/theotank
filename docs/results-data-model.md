@@ -8,33 +8,13 @@ A **result** is the central entity for any user-initiated AI generation (Ask, Po
 
 ## Tables
 
-### `algorithm_versions`
+### Algorithm Configs (code-driven)
 
-Immutable records of generation pipeline configurations, versioned per tool type. Each tool type has its own independent version lineage.
-
-Key columns:
-- `tool_type` — which tool (`ask`, `poll`, `review`, `research`)
-- `version` — semver string, unique per tool type
-- `config` — JSONB with `defaultModels` (model assignments per role) and optional `params`
-- `is_active` — only one version per tool type should be active at a time
-
-To find the current algorithm for a tool type:
-
-```ts
-const [active] = await db
-  .select()
-  .from(algorithmVersions)
-  .where(
-    and(
-      eq(algorithmVersions.toolType, "ask"),
-      eq(algorithmVersions.isActive, true)
-    )
-  );
-```
+Algorithm configs (model assignments, retrieval params, etc.) are defined in `packages/worker/src/default-configs.ts` as typed constants — no DB table. Each result gets a `algorithm_version` text column stamped with the version string (e.g. `"2.0.0"`) from code when processing begins. Config history is tracked through git.
 
 ### `result_types`
 
-Registry of result output shapes, versioned independently per kind. Each row defines the JSON Schema contracts for a result's S3 content, `preview_data` JSONB, and `input_payload` JSONB. This is orthogonal to `algorithm_versions` — that table tracks *how* content is generated (models, params), while `result_types` tracks *what shape* the output takes.
+Registry of result output shapes, versioned independently per kind. Each row defines the JSON Schema contracts for a result's S3 content, `preview_data` JSONB, and `input_payload` JSONB. `result_types` tracks *what shape* the output takes.
 
 Key columns:
 - `kind` — which tool (`ask`, `poll`, `review`, `research`), reuses the `result_tool_type` enum
@@ -59,9 +39,7 @@ const [active] = await db
   );
 ```
 
-A result links to its result type via `result_type_id` FK. This is independent of `algorithm_version_id` — a result has two FKs:
-- `algorithm_version_id` → what models/config were used to generate it
-- `result_type_id` → what shape the output takes
+A result links to its result type via `result_type_id` FK.
 
 ### `results`
 
@@ -74,7 +52,7 @@ Key columns:
 - `theologian_id` — FK to `theologians` for Research (nullable)
 - `status` — `pending` → `processing` → `completed` | `failed`
 - `job_id` — FK to `jobs` (nullable, set when job is enqueued)
-- `algorithm_version_id` — FK to `algorithm_versions` (set when processing begins)
+- `algorithm_version` — text version string from code (set when processing begins, e.g. `"2.0.0"`)
 - `result_type_id` — FK to `result_types` (nullable, set at creation)
 - `models` — JSONB recording the actual models used per role
 - `content_key` — S3 path to the full result JSON
@@ -109,7 +87,7 @@ User submits request
    ┌─────────┐
    │ pending  │  result row created, no job yet
    └────┬─────┘
-        │  job enqueued, job_id + algorithm_version_id set
+        │  job enqueued, job_id + algorithm_version set
         ▼
   ┌───────────┐
   │processing │  worker writes progress logs, generates content
@@ -143,8 +121,7 @@ await db
   .update(results)
   .set({
     status: "processing",
-    jobId: job.id,
-    algorithmVersionId: activeAlgorithm.id,
+    algorithmVersion: ALGO_VERSIONS[toolType],  // e.g. "2.0.0"
     updatedAt: new Date(),
   })
   .where(eq(results.id, resultId));
@@ -196,7 +173,7 @@ await db
 
 ### Retry
 
-A retry creates a **new** result row (new job, potentially new algorithm version). The original failed result is auto-hidden.
+A retry creates a **new** result row (new job, potentially new algorithm config). The original failed result is auto-hidden.
 
 ```ts
 // 1. Create new result copying from original
@@ -243,25 +220,10 @@ These shapes are formally documented as JSON Schema in the `result_types` table 
 
 ### `models`
 
-Records actual models used per role. Structure matches the roles defined in the algorithm version's `config.defaultModels`:
+Records actual models used per role. Structure matches the roles defined in `packages/worker/src/default-configs.ts`:
 
 ```ts
-type ResultModels = Record<string, {
-  model: string;    // e.g. "claude-opus-4-20250514"
-  provider: string; // e.g. "anthropic"
-}>;
-```
-
-### `algorithm_versions.config`
-
-```ts
-interface AlgorithmConfig {
-  defaultModels: Record<string, {
-    model: string;
-    provider: string;
-  }>;
-  params?: Record<string, unknown>;
-}
+type ResultModels = Record<string, string>;  // role → model name
 ```
 
 ## S3 Content Storage
@@ -321,7 +283,6 @@ await db
 
 | Relationship | On Delete | Why |
 |---|---|---|
-| results → algorithm_versions | restrict | Can't delete an algorithm that produced results |
 | results → team_snapshots | restrict | Snapshots are immutable history |
 | results → theologians | restrict | Can't delete a theologian with results |
 | results → result_types | restrict | Can't delete a result type that produced results |
@@ -334,7 +295,7 @@ await db
 1. Add the new value to `resultToolTypeEnum` in `packages/rds/src/schema/results.ts` and generate a migration (`ALTER TYPE ... ADD VALUE`)
 2. Define the `input_payload`, `preview_data`, and full result JSON shapes
 3. Create a `result_types` row with JSON Schema for all three shapes (`input_schema`, `preview_schema`, `content_schema`) and set `is_active = true`. Add the seed row to `packages/rds/seed-data/result-types.json`.
-4. Create an `algorithm_versions` row with the roles and default models for the new tool type
+4. Add a default config constant and version string in `packages/worker/src/default-configs.ts`
 5. Build the job worker that reads `input_payload`, calls the AI models, writes progress logs, uploads to S3, and updates the result row to `completed`
 
 ## Drizzle Imports
@@ -343,15 +304,12 @@ All tables and types are exported from the barrel:
 
 ```ts
 import {
-  algorithmVersions,
   resultTypes,
   results,
   resultProgressLogs,
   resultSaves,
   resultToolTypeEnum,
   resultStatusEnum,
-  type AlgorithmVersion,
-  type NewAlgorithmVersion,
   type ResultType,
   type NewResultType,
   type Result,

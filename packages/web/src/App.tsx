@@ -35,7 +35,6 @@ const AdminCollectionDetail = lazy(
 const AdminJobs = lazy(() => import("@/pages/admin/Jobs"));
 const AdminJobDetail = lazy(() => import("@/pages/admin/JobDetail"));
 const AdminInference = lazy(() => import("@/pages/admin/Inference"));
-
 export default function App() {
   const { isLoaded, isSignedIn, getToken } = useAuth();
   const { signOut } = useClerk();

@@ -1,7 +1,9 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "./lib/logger";
+import { validateConfig } from "./config";
 import { requestLogger } from "./middleware/request-logger";
+import { rateLimiter } from "./middleware/rate-limit";
 import { clerkAuth } from "./middleware/auth";
 import { adminAuth } from "./middleware/admin-auth";
 import theologians from "./routes/theologians";
@@ -14,6 +16,8 @@ import admin from "./routes/admin";
 import publicRoutes from "./routes/public";
 import waitlistRoutes from "./routes/public/waitlist";
 import type { AppEnv } from "./lib/types";
+
+validateConfig();
 
 const app = new Hono<AppEnv>();
 
@@ -43,6 +47,11 @@ app.onError((err, c) => {
 
 // Health check (unauthenticated)
 app.get("/health", (c) => c.json({ ok: true }));
+
+// Rate limiting — more specific paths first
+app.use("/public/waitlist", rateLimiter({ windowMs: 60_000, max: 5 }));
+app.use("/public/*", rateLimiter({ windowMs: 60_000, max: 30 }));
+app.use("*", rateLimiter({ windowMs: 60_000, max: 100 }));
 
 // Public routes (unauthenticated)
 app.route("/public", publicRoutes);

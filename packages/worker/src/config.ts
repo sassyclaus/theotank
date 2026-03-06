@@ -11,6 +11,12 @@ export const config = {
     bucket: process.env.S3_PUBLIC_BUCKET ?? "theotank-public",
     url: process.env.S3_PUBLIC_ASSET_URL ?? "http://localhost:9000/theotank-public",
   },
+  email: {
+    resendApiKey: process.env.RESEND_API_KEY,
+    from: process.env.EMAIL_FROM ?? "TheoTank <notifications@theotank.com>",
+    appUrl: process.env.APP_URL ?? "http://localhost:5173",
+  },
+  clerkSecretKey: process.env.CLERK_SECRET_KEY,
   workerId: process.env.WORKER_ID ?? `worker-${process.pid}`,
   pollIntervalMs: Number(process.env.WORKER_POLL_INTERVAL_MS) || 2000,
   maxConcurrency: Number(process.env.WORKER_MAX_CONCURRENCY) || 3,

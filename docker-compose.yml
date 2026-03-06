@@ -70,6 +70,9 @@ services:
       WORKER_ID: worker-docker-1
       WORKER_POLL_INTERVAL_MS: 2000
       WORKER_MAX_CONCURRENCY: 3
+      RESEND_API_KEY: ${RESEND_API_KEY}
+      EMAIL_FROM: "TheoTank <notifications@info.theotank.com>"
+      APP_URL: http://localhost:5173
     restart: unless-stopped
 
   cron:
