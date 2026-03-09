@@ -29,8 +29,12 @@ Rules:
 
 export function buildReviewUserPrompt(
   text: string,
-  focusPrompt: string | null
+  focusPrompt: string | null,
+  description?: string | null
 ): string {
+  const descLine = description
+    ? `\n\nThe reviewer describes this content as: "${description}"`
+    : "";
   const focusLine = focusPrompt
     ? `\n\nThe reviewer has asked you to focus especially on: "${focusPrompt}"`
     : "";
@@ -39,7 +43,7 @@ export function buildReviewUserPrompt(
 
 ---
 ${text.slice(0, 48000)}
----${focusLine}
+---${descLine}${focusLine}
 
 Provide your review of this content. Assign a letter grade (A+ through F), write a reaction (150–300 words), and list specific strengths and weaknesses.`;
 }

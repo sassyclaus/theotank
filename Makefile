@@ -1,4 +1,4 @@
-.PHONY: deploy-api deploy-worker deploy-cron deploy build-web deploy-web build-site deploy-site deploy-all migrate-prod
+.PHONY: deploy-api deploy-worker deploy-cron deploy build-web deploy-web build-site deploy-site deploy-og-worker deploy-all migrate-prod
 
 ifneq (,$(wildcard ./.env))
     include .env
@@ -36,7 +36,7 @@ deploy-web: build-web
 ifndef CLOUDFLARE_PROJECT_WEB
 	$(error CLOUDFLARE_PROJECT_WEB is not set. Set it in .env or pass it as an argument.)
 endif
-	cd packages/web && npx wrangler pages deploy dist --project-name=$(CLOUDFLARE_PROJECT_WEB)
+	cd packages/web && bunx wrangler pages deploy dist --project-name=$(CLOUDFLARE_PROJECT_WEB)
 
 # Build marketing site (Astro)
 build-site:
@@ -47,7 +47,11 @@ deploy-site: build-site
 ifndef CLOUDFLARE_PROJECT_SITE
 	$(error CLOUDFLARE_PROJECT_SITE is not set. Set it in .env or pass it as an argument.)
 endif
-	cd packages/site && npx wrangler pages deploy dist --project-name=$(CLOUDFLARE_PROJECT_SITE)
+	cd packages/site && bunx wrangler pages deploy dist --project-name=$(CLOUDFLARE_PROJECT_SITE)
+
+# Deploy OG worker to Cloudflare Workers
+deploy-og-worker:
+	cd packages/og-worker && bunx wrangler deploy --env production
 
 # Deploy everything (Railway + Cloudflare)
 deploy-all:

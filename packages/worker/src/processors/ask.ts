@@ -20,11 +20,6 @@ import {
   askCritiqueJsonSchema,
 } from "../prompts/ask-critique";
 import {
-  buildReactionSystemPrompt,
-  buildReactionUserPrompt,
-  reactionJsonSchema,
-} from "../prompts/ask-reaction";
-import {
   buildSynthesisSystemPrompt,
   buildSynthesisUserPrompt,
   synthesisJsonSchema,
@@ -36,7 +31,6 @@ import type {
   AskCritiqueMetrics,
   LLMPerspectiveResponse,
   LLMAskCritiqueResponse,
-  LLMReactionResponse,
   LLMSynthesisResponse,
 } from "../types/ask";
 
@@ -99,70 +93,76 @@ export const processAsk = withResultContext("ask", async (job: Job, ctx: ResultC
   // Per-theologian perspective generation (parallel)
   const perspectiveModel = algoConfig.defaultModels.perspective.model;
 
-  const perspectives = await Promise.all(
-    validTheologians.map(async (t) => {
-      await logProgress(
-        resultId,
-        `${t.name} is considering the question...`,
-        { theologianId: t.id }
-      );
+  const BATCH_SIZE = 5;
+  const perspectives: AskPerspectiveEntry[] = [];
+  for (let i = 0; i < validTheologians.length; i += BATCH_SIZE) {
+    const batch = validTheologians.slice(i, i + BATCH_SIZE);
+    const batchResults = await Promise.all(
+      batch.map(async (t) => {
+        await logProgress(
+          resultId,
+          `${t.name} is considering the question...`,
+          { theologianId: t.id }
+        );
 
-      const response = await ai.chat(
-        {
-          model: perspectiveModel,
-          messages: [
-            {
-              role: "system",
-              content: buildPerspectiveSystemPrompt({
-                name: t.name,
-                born: t.born,
-                died: t.died,
-                bio: t.bio,
-                voiceStyle: t.voiceStyle,
-                tradition: t.tradition,
-                keyWorks: t.keyWorks ?? [],
-                tagline: t.tagline ?? null,
-                era: t.era ?? null,
-              }),
+        const response = await ai.chat(
+          {
+            model: perspectiveModel,
+            messages: [
+              {
+                role: "system",
+                content: buildPerspectiveSystemPrompt({
+                  name: t.name,
+                  born: t.born,
+                  died: t.died,
+                  bio: t.bio,
+                  voiceStyle: t.voiceStyle,
+                  tradition: t.tradition,
+                  keyWorks: t.keyWorks ?? [],
+                  tagline: t.tagline ?? null,
+                  era: t.era ?? null,
+                }),
+              },
+              { role: "user", content: buildPerspectiveUserPrompt(question) },
+            ],
+            response_format: {
+              type: "json_schema",
+              json_schema: perspectiveJsonSchema,
             },
-            { role: "user", content: buildPerspectiveUserPrompt(question) },
-          ],
-          response_format: {
-            type: "json_schema",
-            json_schema: perspectiveJsonSchema,
           },
-        },
-        { label: `perspective:${t.name}`, log, attribution },
-      );
+          { label: `perspective:${t.name}`, log, attribution },
+        );
 
-      const content = response.choices[0]?.message?.content;
-      if (!content) {
-        throw new Error(`Empty response for ${t.name}`);
-      }
+        const content = response.choices[0]?.message?.content;
+        if (!content) {
+          throw new Error(`Empty response for ${t.name}`);
+        }
 
-      const parsed: LLMPerspectiveResponse = JSON.parse(content);
+        const parsed: LLMPerspectiveResponse = JSON.parse(content);
 
-      const dates = t.born
-        ? t.died
-          ? `${t.born}–${t.died}`
-          : `b. ${t.born}`
-        : "";
+        const dates = t.born
+          ? t.died
+            ? `${t.born}–${t.died}`
+            : `b. ${t.born}`
+          : "";
 
-      return {
-        theologian: {
-          name: t.name,
-          initials: t.initials ?? t.name.substring(0, 2).toUpperCase(),
-          dates,
-          tradition: t.tradition ?? "Christian",
-          color: colorForTradition(t.tradition),
-        },
-        perspective: parsed.perspective,
-        reaction: null as string | null,
-        keyThemes: parsed.key_themes,
-        relevantWorks: parsed.relevant_works,
-      } satisfies AskPerspectiveEntry;
-    }),
-  );
+        return {
+          theologian: {
+            name: t.name,
+            initials: t.initials ?? t.name.substring(0, 2).toUpperCase(),
+            dates,
+            tradition: t.tradition ?? "Christian",
+            color: colorForTradition(t.tradition),
+          },
+          perspective: parsed.perspective,
+          reaction: null as string | null,
+          keyThemes: parsed.key_themes,
+          relevantWorks: parsed.relevant_works,
+        } satisfies AskPerspectiveEntry;
+      }),
+    );
+    perspectives.push(...batchResults);
+  }
 
   // Per-theologian critique pass (parallel, soft-fail)
   const critiqueModel = algoConfig.defaultModels.critique?.model ?? algoConfig.defaultModels.perspective.model;
@@ -176,62 +176,65 @@ export const processAsk = withResultContext("ask", async (job: Job, ctx: ResultC
     strengthBreakdown: { none: 0, minor: 0, major: 0 },
   };
 
-  await Promise.all(
-    perspectives.map(async (entry) => {
-      const t = validTheologians.find(
-        (th) => th.name === entry.theologian.name,
-      );
-      if (!t) return;
-
-      try {
-        const response = await ai.chat(
-          {
-            model: critiqueModel,
-            messages: [
-              {
-                role: "system",
-                content: buildAskCritiqueSystemPrompt(),
-              },
-              {
-                role: "user",
-                content: buildAskCritiqueUserPrompt({
-                  theologianName: t.name,
-                  tradition: t.tradition,
-                  born: t.born,
-                  died: t.died,
-                  keyWorks: t.keyWorks ?? [],
-                  perspective: entry.perspective,
-                  relevantWorks: entry.relevantWorks,
-                }),
-              },
-            ],
-            response_format: {
-              type: "json_schema",
-              json_schema: askCritiqueJsonSchema,
-            },
-          },
-          { label: `ask-critique:${t.name}`, log, attribution },
+  for (let i = 0; i < perspectives.length; i += BATCH_SIZE) {
+    const batch = perspectives.slice(i, i + BATCH_SIZE);
+    await Promise.all(
+      batch.map(async (entry) => {
+        const t = validTheologians.find(
+          (th) => th.name === entry.theologian.name,
         );
+        if (!t) return;
 
-        const content = response.choices[0]?.message?.content;
-        if (content) {
-          const critique: LLMAskCritiqueResponse = JSON.parse(content);
-          critiqueMetrics.total++;
-          critiqueMetrics.strengthBreakdown[critique.critique_strength]++;
+        try {
+          const response = await ai.chat(
+            {
+              model: critiqueModel,
+              messages: [
+                {
+                  role: "system",
+                  content: buildAskCritiqueSystemPrompt(),
+                },
+                {
+                  role: "user",
+                  content: buildAskCritiqueUserPrompt({
+                    theologianName: t.name,
+                    tradition: t.tradition,
+                    born: t.born,
+                    died: t.died,
+                    keyWorks: t.keyWorks ?? [],
+                    perspective: entry.perspective,
+                    relevantWorks: entry.relevantWorks,
+                  }),
+                },
+              ],
+              response_format: {
+                type: "json_schema",
+                json_schema: askCritiqueJsonSchema,
+              },
+            },
+            { label: `ask-critique:${t.name}`, log, attribution },
+          );
 
-          if (!critique.is_accurate) {
-            entry.perspective = critique.corrected_perspective;
-            entry.relevantWorks = critique.corrected_works;
-            critiqueMetrics.corrected++;
+          const content = response.choices[0]?.message?.content;
+          if (content) {
+            const critique: LLMAskCritiqueResponse = JSON.parse(content);
+            critiqueMetrics.total++;
+            critiqueMetrics.strengthBreakdown[critique.critique_strength]++;
+
+            if (!critique.is_accurate) {
+              entry.perspective = critique.corrected_perspective;
+              entry.relevantWorks = critique.corrected_works;
+              critiqueMetrics.corrected++;
+            }
           }
+        } catch {
+          // Critique soft failure — proceed with original perspective
+          critiqueMetrics.total++;
+          critiqueMetrics.softFailures++;
         }
-      } catch {
-        // Critique soft failure — proceed with original perspective
-        critiqueMetrics.total++;
-        critiqueMetrics.softFailures++;
-      }
-    }),
-  );
+      }),
+    );
+  }
 
   log.info({ critiqueMetrics }, "Ask critique pass summary");
   await logProgress(
@@ -239,87 +242,6 @@ export const processAsk = withResultContext("ask", async (job: Job, ctx: ResultC
     `Accuracy check: ${critiqueMetrics.corrected} of ${critiqueMetrics.total} perspectives were refined`,
     { critiqueMetrics },
   );
-
-  // Per-theologian reactions (parallel)
-  const reactionModel = algoConfig.defaultModels.reaction?.model ?? algoConfig.defaultModels.perspective.model;
-
-  await logProgress(resultId, "Theologians are reacting to each other's views...");
-
-  const reactions = await Promise.all(
-    perspectives.map(async (currentPerspective) => {
-      const currentTheologian = validTheologians.find(
-        (t) => t.name === currentPerspective.theologian.name,
-      );
-      if (!currentTheologian) {
-        return { theologianName: currentPerspective.theologian.name, reaction: "" };
-      }
-
-      const otherPerspectives = perspectives
-        .filter((p) => p.theologian.name !== currentPerspective.theologian.name)
-        .map((p) => ({
-          name: p.theologian.name,
-          tradition: p.theologian.tradition,
-          perspective: p.perspective,
-        }));
-
-      await logProgress(
-        resultId,
-        `${currentTheologian.name} is reacting to the group's perspectives...`,
-        { theologianId: currentTheologian.id },
-      );
-
-      try {
-        const response = await ai.chat(
-          {
-            model: reactionModel,
-            messages: [
-              {
-                role: "system",
-                content: buildReactionSystemPrompt({
-                  name: currentTheologian.name,
-                  born: currentTheologian.born,
-                  died: currentTheologian.died,
-                  bio: currentTheologian.bio,
-                  voiceStyle: currentTheologian.voiceStyle,
-                  tradition: currentTheologian.tradition,
-                }),
-              },
-              {
-                role: "user",
-                content: buildReactionUserPrompt(
-                  question,
-                  currentTheologian.name,
-                  otherPerspectives,
-                ),
-              },
-            ],
-            response_format: {
-              type: "json_schema",
-              json_schema: reactionJsonSchema,
-            },
-          },
-          { label: `reaction:${currentTheologian.name}`, log, attribution },
-        );
-
-        const content = response.choices[0]?.message?.content;
-        if (!content) {
-          return { theologianName: currentTheologian.name, reaction: "" };
-        }
-
-        const parsed: LLMReactionResponse = JSON.parse(content);
-        return { theologianName: currentTheologian.name, reaction: parsed.reaction };
-      } catch (err) {
-        log.warn({ err, theologian: currentTheologian.name }, "Reaction call failed — continuing without reaction");
-        return { theologianName: currentTheologian.name, reaction: "" };
-      }
-    }),
-  );
-
-  // Attach reactions to perspective entries
-  for (const entry of perspectives) {
-    const match = reactions.find((r) => r.theologianName === entry.theologian.name);
-    entry.reaction = match?.reaction || null;
-  }
 
   // Synthesis call
   await logProgress(resultId, "Synthesizing perspectives...");
@@ -333,11 +255,7 @@ export const processAsk = withResultContext("ask", async (job: Job, ctx: ResultC
         { role: "system", content: buildSynthesisSystemPrompt() },
         {
           role: "user",
-          content: buildSynthesisUserPrompt(
-            question,
-            perspectives,
-            reactions.filter((r) => r.reaction),
-          ),
+          content: buildSynthesisUserPrompt(question, perspectives),
         },
       ],
       response_format: {
@@ -413,7 +331,6 @@ export const processAsk = withResultContext("ask", async (job: Job, ctx: ResultC
       models: {
         perspective: perspectiveModel,
         critique: critiqueModel,
-        reaction: reactionModel,
         synthesis: synthesisModel,
       },
       completedAt: now,

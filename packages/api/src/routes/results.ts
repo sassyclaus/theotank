@@ -31,7 +31,7 @@ app.post("/", async (c) => {
     | { toolType: "ask"; teamId: string; question: string }
     | { toolType: "poll"; teamId: string; question: string; options: string[] }
     | { toolType: "super_poll"; question: string; options: string[] }
-    | { toolType: "review"; teamId: string; reviewFileId: string; focusPrompt?: string }
+    | { toolType: "review"; teamId: string; reviewFileId: string; focusPrompt?: string; title?: string; description?: string }
     | { toolType: "research"; theologianId: string; question: string }
   >();
 
@@ -282,14 +282,15 @@ app.post("/", async (c) => {
         inputPayload = {
           reviewFileId: body.reviewFileId,
           focusPrompt: body.focusPrompt ?? null,
+          description: body.description ?? null,
         };
-        // Use the review file label as the result title
+        // Use custom title if provided, else fall back to review file label
         const db2 = getDb();
         const [file] = await db2
           .select({ label: reviewFiles.label })
           .from(reviewFiles)
           .where(eq(reviewFiles.id, body.reviewFileId));
-        title = `Review: ${file?.label ?? "Untitled"}`;
+        title = body.title?.trim() || `Review: ${file?.label ?? "Untitled"}`;
       } else if (body.toolType === "poll") {
         inputPayload = { question: body.question, options: body.options };
         title = body.question;
@@ -309,6 +310,7 @@ app.post("/", async (c) => {
           inputPayload,
           teamSnapshotId: snapshot.id,
           reviewFileId: body.toolType === "review" ? body.reviewFileId : undefined,
+          isPrivate: body.toolType === "review" ? true : undefined,
           resultTypeId: resultType.id,
           status: "pending",
         })
@@ -412,6 +414,7 @@ app.get("/:id", async (c) => {
       previewExcerpt: results.previewExcerpt,
       contentKey: results.contentKey,
       pdfKey: results.pdfKey,
+      isPrivate: results.isPrivate,
       models: results.models,
       errorMessage: results.errorMessage,
       createdAt: results.createdAt,
@@ -671,6 +674,77 @@ app.get("/:id/pdf/download", async (c) => {
   const url = await presignGetUrl(result.pdfKey, 300, filename);
 
   return c.json({ url, filename });
+});
+
+// PATCH /api/results/:id/visibility — toggle public/private
+app.patch("/:id/visibility", async (c) => {
+  const userId = c.get("userId");
+  const resultId = c.req.param("id");
+  const body = await c.req.json<{ isPrivate: boolean }>();
+  const db = getDb();
+
+  const [result] = await db
+    .select({ userId: results.userId, status: results.status })
+    .from(results)
+    .where(eq(results.id, resultId));
+
+  if (!result) {
+    return c.json({ error: "Result not found" }, 404);
+  }
+  if (result.userId !== userId) {
+    return c.json({ error: "Not authorized" }, 403);
+  }
+  if (result.status !== "completed") {
+    return c.json({ error: "Only completed results can change visibility" }, 400);
+  }
+
+  await db
+    .update(results)
+    .set({ isPrivate: body.isPrivate, updatedAt: new Date() })
+    .where(eq(results.id, resultId));
+
+  return c.json({ isPrivate: body.isPrivate });
+});
+
+// GET /api/results/:id/source-text — presigned URL for review source text
+app.get("/:id/source-text", async (c) => {
+  const userId = c.get("userId");
+  const resultId = c.req.param("id");
+  const db = getDb();
+
+  const [result] = await db
+    .select({
+      userId: results.userId,
+      toolType: results.toolType,
+      reviewFileId: results.reviewFileId,
+    })
+    .from(results)
+    .where(eq(results.id, resultId));
+
+  if (!result) {
+    return c.json({ error: "Result not found" }, 404);
+  }
+  if (result.userId !== userId) {
+    return c.json({ error: "Not authorized" }, 403);
+  }
+  if (result.toolType !== "review" || !result.reviewFileId) {
+    return c.json({ error: "Source text only available for review results" }, 400);
+  }
+
+  const [file] = await db
+    .select({
+      textStorageKey: reviewFiles.textStorageKey,
+      label: reviewFiles.label,
+    })
+    .from(reviewFiles)
+    .where(eq(reviewFiles.id, result.reviewFileId));
+
+  if (!file || !file.textStorageKey) {
+    return c.json({ error: "Source text not available" }, 404);
+  }
+
+  const url = await presignGetUrl(file.textStorageKey, 300);
+  return c.json({ url, label: file.label });
 });
 
 export default app;

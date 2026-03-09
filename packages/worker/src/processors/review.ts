@@ -22,11 +22,18 @@ import {
   buildReviewSynthesisUserPrompt,
   reviewSynthesisJsonSchema,
 } from "../prompts/review";
+import {
+  buildReviewCritiqueSystemPrompt,
+  buildReviewCritiqueUserPrompt,
+  reviewCritiqueJsonSchema,
+} from "../prompts/review-critique";
 import type {
   ReviewJobPayload,
   ReviewGradeEntry,
   ReviewContent,
+  ReviewCritiqueMetrics,
   LLMReviewResponse,
+  LLMReviewCritiqueResponse,
   LLMReviewSynthesisResponse,
 } from "../types/review";
 
@@ -48,6 +55,7 @@ export const processReview = withResultContext("review", async (job: Job, ctx: R
   const inputPayload = result.inputPayload as {
     reviewFileId: string;
     focusPrompt: string | null;
+    description: string | null;
   };
 
   const [reviewFile] = await db
@@ -118,72 +126,164 @@ export const processReview = withResultContext("review", async (job: Job, ctx: R
   // Per-theologian review (parallel)
   const reviewModel = algoConfig.defaultModels.review.model;
 
-  const grades = await Promise.all(
-    validTheologians.map(async (t) => {
-      await logProgress(
-        resultId,
-        `${t.name} is reviewing the content...`,
-        { theologianId: t.id }
-      );
+  const BATCH_SIZE = 5;
+  const grades: ReviewGradeEntry[] = [];
+  for (let i = 0; i < validTheologians.length; i += BATCH_SIZE) {
+    const batch = validTheologians.slice(i, i + BATCH_SIZE);
+    const batchResults = await Promise.all(
+      batch.map(async (t) => {
+        await logProgress(
+          resultId,
+          `${t.name} is reviewing the content...`,
+          { theologianId: t.id }
+        );
 
-      const response = await ai.chat(
-        {
-          model: reviewModel,
-          messages: [
-            {
-              role: "system",
-              content: buildReviewSystemPrompt({
-                name: t.name,
-                born: t.born,
-                died: t.died,
-                bio: t.bio,
-                voiceStyle: t.voiceStyle,
-                tradition: t.tradition,
-              }),
+        const response = await ai.chat(
+          {
+            model: reviewModel,
+            messages: [
+              {
+                role: "system",
+                content: buildReviewSystemPrompt({
+                  name: t.name,
+                  born: t.born,
+                  died: t.died,
+                  bio: t.bio,
+                  voiceStyle: t.voiceStyle,
+                  tradition: t.tradition,
+                }),
+              },
+              {
+                role: "user",
+                content: buildReviewUserPrompt(
+                  reviewText,
+                  inputPayload.focusPrompt,
+                  inputPayload.description
+                ),
+              },
+            ],
+            response_format: {
+              type: "json_schema",
+              json_schema: reviewJsonSchema,
             },
-            {
-              role: "user",
-              content: buildReviewUserPrompt(
-                reviewText,
-                inputPayload.focusPrompt
-              ),
-            },
-          ],
-          response_format: {
-            type: "json_schema",
-            json_schema: reviewJsonSchema,
           },
-        },
-        { label: `review:${t.name}`, log, attribution },
-      );
+          { label: `review:${t.name}`, log, attribution },
+        );
 
-      const content = response.choices[0]?.message?.content;
-      if (!content) {
-        throw new Error(`Empty response for ${t.name}`);
-      }
+        const content = response.choices[0]?.message?.content;
+        if (!content) {
+          throw new Error(`Empty response for ${t.name}`);
+        }
 
-      const parsed: LLMReviewResponse = JSON.parse(content);
+        const parsed: LLMReviewResponse = JSON.parse(content);
 
-      const dates = t.born
-        ? t.died
-          ? `${t.born}–${t.died}`
-          : `b. ${t.born}`
-        : "";
+        const dates = t.born
+          ? t.died
+            ? `${t.born}–${t.died}`
+            : `b. ${t.born}`
+          : "";
 
-      return {
-        theologian: {
-          name: t.name,
-          initials: t.initials ?? t.name.substring(0, 2).toUpperCase(),
-          dates,
-          tradition: t.tradition ?? "Christian",
-          color: colorForTradition(t.tradition),
-        },
-        grade: parsed.grade,
-        reaction: parsed.reaction,
-        strengths: parsed.strengths,
-        weaknesses: parsed.weaknesses,
-      } satisfies ReviewGradeEntry;
-    }),
+        return {
+          theologian: {
+            name: t.name,
+            initials: t.initials ?? t.name.substring(0, 2).toUpperCase(),
+            dates,
+            tradition: t.tradition ?? "Christian",
+            color: colorForTradition(t.tradition),
+          },
+          grade: parsed.grade,
+          reaction: parsed.reaction,
+          strengths: parsed.strengths,
+          weaknesses: parsed.weaknesses,
+        } satisfies ReviewGradeEntry;
+      }),
+    );
+    grades.push(...batchResults);
+  }
+
+  // ── Critique pass (parallel, soft-fail) ──────────────────────────
+  const critiqueModel = algoConfig.defaultModels.critique?.model
+    ?? algoConfig.defaultModels.review.model;
+
+  await logProgress(resultId, "Verifying accuracy of reviews...");
+
+  const critiqueMetrics: ReviewCritiqueMetrics = {
+    total: 0,
+    corrected: 0,
+    softFailures: 0,
+    strengthBreakdown: { none: 0, minor: 0, major: 0 },
+  };
+
+  for (let i = 0; i < grades.length; i += BATCH_SIZE) {
+    const batch = grades.slice(i, i + BATCH_SIZE);
+    await Promise.all(
+      batch.map(async (entry) => {
+        const t = validTheologians.find(
+          (th) => th.name === entry.theologian.name,
+        );
+        if (!t) return;
+
+        try {
+          const response = await ai.chat(
+            {
+              model: critiqueModel,
+              messages: [
+                {
+                  role: "system",
+                  content: buildReviewCritiqueSystemPrompt(),
+                },
+                {
+                  role: "user",
+                  content: buildReviewCritiqueUserPrompt({
+                    theologianName: t.name,
+                    tradition: t.tradition,
+                    born: t.born,
+                    died: t.died,
+                    bio: t.bio,
+                    grade: entry.grade,
+                    reaction: entry.reaction,
+                    strengths: entry.strengths,
+                    weaknesses: entry.weaknesses,
+                    reviewedContentExcerpt: reviewText.slice(0, 500),
+                  }),
+                },
+              ],
+              response_format: {
+                type: "json_schema",
+                json_schema: reviewCritiqueJsonSchema,
+              },
+            },
+            { label: `review-critique:${t.name}`, log, attribution },
+          );
+
+          const content = response.choices[0]?.message?.content;
+          if (content) {
+            const critique: LLMReviewCritiqueResponse = JSON.parse(content);
+            critiqueMetrics.total++;
+            critiqueMetrics.strengthBreakdown[critique.critique_strength]++;
+
+            if (!critique.is_accurate) {
+              entry.grade = critique.corrected_grade;
+              entry.reaction = critique.corrected_reaction;
+              entry.strengths = critique.corrected_strengths;
+              entry.weaknesses = critique.corrected_weaknesses;
+              critiqueMetrics.corrected++;
+            }
+          }
+        } catch {
+          // Critique soft failure — proceed with original review
+          critiqueMetrics.total++;
+          critiqueMetrics.softFailures++;
+        }
+      }),
+    );
+  }
+
+  log.info({ critiqueMetrics }, "Review critique pass summary");
+  await logProgress(
+    resultId,
+    `Accuracy check: ${critiqueMetrics.corrected} of ${critiqueMetrics.total} reviews were refined`,
+    { critiqueMetrics },
   );
 
   // Synthesis call
@@ -227,9 +327,11 @@ export const processReview = withResultContext("review", async (job: Job, ctx: R
   const reviewContent: ReviewContent = {
     reviewFileLabel: reviewFile.label,
     focusPrompt: inputPayload.focusPrompt,
+    description: inputPayload.description ?? null,
     overallGrade: synthesis.overall_grade,
     summary: synthesis.summary,
     grades,
+    critiqueMetrics,
     ...(wasTruncated && { wasTruncated, originalCharCount }),
   };
 
@@ -279,6 +381,7 @@ export const processReview = withResultContext("review", async (job: Job, ctx: R
       previewExcerpt,
       models: {
         review: reviewModel,
+        critique: critiqueModel,
         synthesis: synthesisModel,
       },
       completedAt: now,

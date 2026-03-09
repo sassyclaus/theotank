@@ -1,17 +1,35 @@
-import { Check, AlertTriangle, Info } from "lucide-react";
+import { useState } from "react";
+import { Check, AlertTriangle, Info, FileText, ChevronDown, ChevronUp } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { splitParagraphs } from "@/lib/utils";
+import { useResultSourceText } from "@/hooks/useResults";
 import type { ReviewResult, ResultTheologian } from "@/data/mock-results";
 
 interface ReviewResultBodyProps {
   result: ReviewResult;
   wasTruncated?: boolean;
   originalCharCount?: number;
+  description?: string | null;
+  resultId?: string;
+  isOwner?: boolean;
 }
 
-export function ReviewResultBody({ result, wasTruncated, originalCharCount }: ReviewResultBodyProps) {
+export function ReviewResultBody({ result, wasTruncated, originalCharCount, description, resultId, isOwner }: ReviewResultBodyProps) {
+  const [sourceExpanded, setSourceExpanded] = useState(false);
+  const { data: sourceData, isLoading: sourceLoading } = useResultSourceText(
+    resultId,
+    sourceExpanded && !!isOwner,
+  );
+
   return (
     <div className="space-y-8">
+      {description && (
+        <div className="rounded-lg border border-surface bg-surface/30 px-4 py-3">
+          <p className="text-sm italic text-text-secondary">{description}</p>
+        </div>
+      )}
+
       {wasTruncated && originalCharCount && (
         <div className="flex items-start gap-2 rounded-lg border border-teal/20 bg-teal-light/50 px-4 py-3">
           <Info className="mt-0.5 h-4 w-4 shrink-0 text-teal" />
@@ -19,6 +37,48 @@ export function ReviewResultBody({ result, wasTruncated, originalCharCount }: Re
             This document was trimmed to ~12 pages for review. The full document was{" "}
             {originalCharCount.toLocaleString()} characters.
           </p>
+        </div>
+      )}
+
+      {/* Collapsible source text (owner only) */}
+      {isOwner && resultId && (
+        <div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setSourceExpanded(!sourceExpanded)}
+          >
+            <FileText className="h-3.5 w-3.5" />
+            {sourceExpanded ? (
+              <>
+                <ChevronUp className="h-3.5 w-3.5" />
+                Hide Source Text
+              </>
+            ) : (
+              <>
+                <ChevronDown className="h-3.5 w-3.5" />
+                View Source Text
+              </>
+            )}
+          </Button>
+          {sourceExpanded && (
+            <div className="mt-3 max-h-96 overflow-y-auto rounded-lg border border-surface bg-white p-4">
+              {sourceLoading ? (
+                <p className="text-sm text-text-secondary">Loading source text...</p>
+              ) : sourceData ? (
+                <div>
+                  <p className="mb-2 text-xs font-medium text-text-secondary">
+                    {sourceData.label}
+                  </p>
+                  <pre className="whitespace-pre-wrap text-sm text-text-primary">
+                    {sourceData.text}
+                  </pre>
+                </div>
+              ) : (
+                <p className="text-sm text-text-secondary">Source text not available.</p>
+              )}
+            </div>
+          )}
         </div>
       )}
 

@@ -1,0 +1,18 @@
+name = "theotank-og-worker"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+
+[vars]
+API_BASE_URL = "http://localhost:3001"
+ASSET_BASE_URL = "http://localhost:9000/theotank-public"
+PAGES_ORIGIN = "http://localhost:5173"
+
+[env.production]
+routes = [
+  { pattern = "app.theotank.com/*", zone_name = "theotank.com" }
+]
+
+[env.production.vars]
+API_BASE_URL = "https://api.theotank.com"
+ASSET_BASE_URL = "https://assets.theotank.com"
+PAGES_ORIGIN = "https://theotankapp.pages.dev"

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router";
-import { ArrowLeft, Download, Share2, Link2, Check } from "lucide-react";
+import { ArrowLeft, Download, Share2, Link2, Check, Lock, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TOOL_LABELS, TOOL_COLORS, TOOL_ICONS } from "@/data/mock-library";
 import { downloadPdf } from "@/lib/api";
@@ -19,9 +19,12 @@ interface ReportHeaderProps {
   resultId?: string;
   pdfKey?: string | null;
   teamMembers?: TeamMemberInfo[] | null;
+  isOwner?: boolean;
+  isPrivate?: boolean;
+  onToggleVisibility?: () => void;
 }
 
-export function ReportHeader({ result, resultId, pdfKey, teamMembers }: ReportHeaderProps) {
+export function ReportHeader({ result, resultId, pdfKey, teamMembers, isOwner, isPrivate, onToggleVisibility }: ReportHeaderProps) {
   const navigate = useNavigate();
   const colors = TOOL_COLORS[result.tool];
   const Icon = TOOL_ICONS[result.tool];
@@ -124,6 +127,16 @@ export function ReportHeader({ result, resultId, pdfKey, teamMembers }: ReportHe
               )}
               {copied ? "Copied!" : "Copy Link"}
             </Button>
+            {isOwner && result.tool === "review" && onToggleVisibility && (
+              <Button variant="outline" size="sm" onClick={onToggleVisibility}>
+                {isPrivate ? (
+                  <Lock className="h-3.5 w-3.5" />
+                ) : (
+                  <Globe className="h-3.5 w-3.5" />
+                )}
+                {isPrivate ? "Private" : "Public"}
+              </Button>
+            )}
           </div>
 
           {teamMembers && teamMembers.length > 0 && (

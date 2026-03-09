@@ -1,8 +1,8 @@
 import { Hono } from "hono";
 import { getDb } from "@theotank/rds/db";
-import { inferenceLogs, users } from "@theotank/rds/schema";
-import { gte, inArray } from "drizzle-orm";
-import { estimateCost, MODEL_PRICING, WHISPER_COST_PER_MINUTE } from "../../lib/model-pricing";
+import { inferenceLogs, results, users } from "@theotank/rds/schema";
+import { gte, inArray, eq, sql, ilike, and, desc, asc } from "drizzle-orm";
+import { estimateCost, MODEL_PRICING, WHISPER_COST_PER_MINUTE, costCaseExpression } from "../../lib/model-pricing";
 import type { AppEnv } from "../../lib/types";
 
 const app = new Hono<AppEnv>();
@@ -189,6 +189,108 @@ app.get("/", async (c) => {
     topUsers,
     modelBreakdown,
     modelPricing: MODEL_PRICING,
+  });
+});
+
+// GET /api/admin/inference/results — per-result cost feed
+app.get("/results", async (c) => {
+  const db = getDb();
+  const period = Math.min(Number(c.req.query("period") || 30), 365);
+  const windowStart = new Date(Date.now() - period * 24 * 60 * 60 * 1000);
+  const limit = Math.min(Math.max(Number(c.req.query("limit") || 25), 1), 200);
+  const offset = Math.max(Number(c.req.query("offset") || 0), 0);
+  const toolType = c.req.query("toolType") || undefined;
+  const search = c.req.query("search") || undefined;
+  const sort = c.req.query("sort") === "cost" ? "cost" : "createdAt";
+  const order = c.req.query("order") === "asc" ? "asc" : "desc";
+
+  // Subquery: aggregate inference_logs per result_id
+  const costExpr = costCaseExpression();
+  const resultCosts = db
+    .select({
+      resultId: sql<string>`(attribution->>'result_id')::uuid`.as("result_id"),
+      promptTokens: sql<number>`SUM(prompt_tokens)`.as("agg_prompt_tokens"),
+      completionTokens: sql<number>`SUM(completion_tokens)`.as("agg_completion_tokens"),
+      inferenceCalls: sql<number>`COUNT(*)`.as("inference_calls"),
+      estimatedCost: sql<number>`SUM(${sql.raw(costExpr)})`.as("estimated_cost"),
+    })
+    .from(inferenceLogs)
+    .where(
+      and(
+        gte(inferenceLogs.createdAt, windowStart),
+        sql`attribution->>'result_id' IS NOT NULL`,
+      ),
+    )
+    .groupBy(sql`attribution->>'result_id'`)
+    .as("result_costs");
+
+  // Build WHERE conditions for the main query
+  const conditions = [];
+  if (toolType) {
+    conditions.push(eq(results.toolType, toolType as typeof results.toolType.enumValues[number]));
+  }
+  if (search) {
+    conditions.push(ilike(results.title, `%${search}%`));
+  }
+
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+  // Sort expression
+  const sortExpr =
+    sort === "cost"
+      ? order === "asc"
+        ? asc(resultCosts.estimatedCost)
+        : desc(resultCosts.estimatedCost)
+      : order === "asc"
+        ? asc(results.createdAt)
+        : desc(results.createdAt);
+
+  // Main query
+  const rows = await db
+    .select({
+      resultId: results.id,
+      title: results.title,
+      toolType: results.toolType,
+      status: results.status,
+      userName: users.name,
+      userEmail: users.email,
+      inferenceCalls: resultCosts.inferenceCalls,
+      promptTokens: resultCosts.promptTokens,
+      completionTokens: resultCosts.completionTokens,
+      estimatedCost: resultCosts.estimatedCost,
+      createdAt: results.createdAt,
+    })
+    .from(resultCosts)
+    .innerJoin(results, eq(sql`${resultCosts.resultId}`, results.id))
+    .leftJoin(users, eq(users.clerkId, results.userId))
+    .where(whereClause)
+    .orderBy(sortExpr)
+    .limit(limit)
+    .offset(offset);
+
+  // Count query
+  const [{ total }] = await db
+    .select({ total: sql<number>`COUNT(*)` })
+    .from(resultCosts)
+    .innerJoin(results, eq(sql`${resultCosts.resultId}`, results.id))
+    .where(whereClause);
+
+  return c.json({
+    results: rows.map((r) => ({
+      resultId: r.resultId,
+      title: r.title,
+      toolType: r.toolType,
+      status: r.status,
+      userName: r.userName,
+      userEmail: r.userEmail,
+      inferenceCalls: Number(r.inferenceCalls),
+      promptTokens: Number(r.promptTokens),
+      completionTokens: Number(r.completionTokens),
+      totalTokens: Number(r.promptTokens) + Number(r.completionTokens),
+      estimatedCost: Math.round(Number(r.estimatedCost) * 10000) / 10000,
+      createdAt: r.createdAt.toISOString(),
+    })),
+    total: Number(total),
   });
 });
 

@@ -35,6 +35,7 @@ const AdminCollectionDetail = lazy(
 const AdminJobs = lazy(() => import("@/pages/admin/Jobs"));
 const AdminJobDetail = lazy(() => import("@/pages/admin/JobDetail"));
 const AdminInference = lazy(() => import("@/pages/admin/Inference"));
+const AdminWaitlist = lazy(() => import("@/pages/admin/Waitlist"));
 export default function App() {
   const { isLoaded, isSignedIn, getToken } = useAuth();
   const { signOut } = useClerk();
@@ -160,6 +161,14 @@ export default function App() {
           element={
             <Suspense fallback={null}>
               <AdminInference />
+            </Suspense>
+          }
+        />
+        <Route
+          path="waitlist"
+          element={
+            <Suspense fallback={null}>
+              <AdminWaitlist />
             </Suspense>
           }
         />

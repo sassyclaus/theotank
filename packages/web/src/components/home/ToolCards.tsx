@@ -5,21 +5,21 @@ const tools = [
   {
     title: "Ask",
     description:
-      "Pose a question and receive synthesized perspectives from a curated panel of theological voices.",
+      "Pose a question and receive simulated perspectives from a curated panel of theological voices.",
     icon: MessageCircle,
     cta: "Convene Panel",
   },
   {
     title: "Poll",
     description:
-      "Survey 350+ theologians across 2,000 years. See where the tradition agrees — and where it fractures.",
+      "simulated survey of 350+ theologians across 2,000 years. See where the tradition agrees — and where it fractures.",
     icon: BarChart3,
     cta: "Run Poll",
   },
   {
     title: "Review",
     description:
-      "Submit a sermon, essay, or lecture for theological review by your chosen panel of voices.",
+      "Submit a sermon, essay, or lecture for simulated theological review by your chosen panel of voices.",
     icon: FileCheck,
     cta: "Submit for Review",
   },

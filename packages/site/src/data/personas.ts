@@ -11,14 +11,14 @@ export const personas: PersonaData[] = [
     slug: "creator",
     icon: "video",
     description:
-      "Ground your next video in 2,000 years of church history. Share poll results and theologian quotes your audience will debate for days.",
+      "Ground your next video in 2,000 years of church history. Share simulated poll results and theologian perspectives your audience will debate for days.",
   },
   {
     title: "Pastors & preachers",
     slug: "pastor",
     icon: "book-open",
     description:
-      "Get your sermon reviewed by the Reformers. Browse what others have already asked. Prep faster with a theological panel on call.",
+      "Get simulated feedback on your sermon from the Reformers. Browse what others have already asked. Prep faster with a theological panel on call.",
   },
   {
     title: "Students & academics",
@@ -32,6 +32,6 @@ export const personas: PersonaData[] = [
     slug: "enthusiast",
     icon: "compass",
     description:
-      "Ask anything. See how history's brightest minds would answer. No seminary degree required.",
+      "Ask anything. See how simulations of history's brightest minds might answer. No seminary degree required.",
   },
 ];

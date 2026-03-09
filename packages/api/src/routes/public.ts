@@ -352,10 +352,11 @@ app.get("/results/:id", async (c) => {
     return c.json({ error: "Result not found" }, 404);
   }
 
-  // Reject: not completed, private, research, hidden, moderated, or no content
+  // Reject: not completed, research, hidden, moderated, or no content
+  // Note: isPrivate is NOT checked here — private results are still shareable
+  // via direct link. isPrivate only controls Explore/search visibility.
   if (
     row.status !== "completed" ||
-    row.isPrivate ||
     row.toolType === "research" ||
     row.hiddenAt !== null ||
     row.moderationStatus !== "approved" ||

@@ -133,6 +133,19 @@ export async function getResultContent(url: string): Promise<AskContentResponse 
   return res.json();
 }
 
+export async function updateResultVisibility(
+  id: string,
+  isPrivate: boolean,
+): Promise<{ isPrivate: boolean }> {
+  return apiClient.patch(`/api/results/${id}/visibility`, { isPrivate });
+}
+
+export async function getResultSourceText(
+  id: string,
+): Promise<{ url: string; label: string }> {
+  return apiClient.get(`/api/results/${id}/source-text`);
+}
+
 export async function retryResult(
   id: string,
 ): Promise<{ id: string; status: string; toolType: string; title: string; createdAt: string }> {
@@ -196,6 +209,13 @@ export async function listReviewFiles(): Promise<ReviewFile[]> {
 
 export async function deleteReviewFile(id: string): Promise<void> {
   return apiClient.delete<void>(`/api/review-files/${id}`);
+}
+
+export async function pasteReviewFileText(
+  text: string,
+  label?: string,
+): Promise<{ id: string; label: string; charCount: number; status: string }> {
+  return apiClient.post("/api/review-files/paste", { text, label });
 }
 
 // ── Admin Teams ─────────────────────────────────────────────────────
@@ -373,6 +393,31 @@ export async function adminBulkCancelJobs(): Promise<BulkActionResponse> {
   return apiClient.post<BulkActionResponse>("/api/admin/jobs/bulk/cancel");
 }
 
+// ── Admin Waitlist ───────────────────────────────────────────────────
+
+import type {
+  WaitlistListParams,
+  WaitlistListResponse,
+} from "@/data/admin/waitlist-types";
+
+export async function adminListWaitlist(
+  params?: WaitlistListParams,
+): Promise<WaitlistListResponse> {
+  const query = new URLSearchParams();
+  if (params?.search) query.set("search", params.search);
+  if (params?.persona) query.set("persona", params.persona);
+  if (params?.toolInterest) query.set("toolInterest", params.toolInterest);
+  if (params?.emailConfirmed) query.set("emailConfirmed", params.emailConfirmed);
+  if (params?.limit) query.set("limit", String(params.limit));
+  if (params?.offset) query.set("offset", String(params.offset));
+  if (params?.sort) query.set("sort", params.sort);
+  if (params?.order) query.set("order", params.order);
+  const qs = query.toString();
+  return apiClient.get<WaitlistListResponse>(
+    `/api/admin/waitlist${qs ? `?${qs}` : ""}`,
+  );
+}
+
 // ── Admin Content ───────────────────────────────────────────────────
 
 import type {
@@ -493,10 +538,31 @@ export async function adminReorderCollections(
 
 // ── Admin Inference ──────────────────────────────────────────────────
 
-import type { InferenceData } from "@/data/admin/inference-types";
+import type {
+  InferenceData,
+  InferenceResultFeedResponse,
+  InferenceResultFeedParams,
+} from "@/data/admin/inference-types";
 
 export async function adminGetInferenceData(period = 30): Promise<InferenceData> {
   return apiClient.get<InferenceData>(`/api/admin/inference?period=${period}`);
+}
+
+export async function adminGetInferenceResultsFeed(
+  params?: InferenceResultFeedParams,
+): Promise<InferenceResultFeedResponse> {
+  const query = new URLSearchParams();
+  if (params?.period) query.set("period", String(params.period));
+  if (params?.toolType) query.set("toolType", params.toolType);
+  if (params?.search) query.set("search", params.search);
+  if (params?.limit) query.set("limit", String(params.limit));
+  if (params?.offset) query.set("offset", String(params.offset));
+  if (params?.sort) query.set("sort", params.sort);
+  if (params?.order) query.set("order", params.order);
+  const qs = query.toString();
+  return apiClient.get<InferenceResultFeedResponse>(
+    `/api/admin/inference/results${qs ? `?${qs}` : ""}`,
+  );
 }
 
 // ── Public Sharing (unauthenticated) ────────────────────────────────

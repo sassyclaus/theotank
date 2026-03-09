@@ -5,6 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useCreateResult } from "@/hooks/useResults";
 import { getTheologian } from "@/lib/api";
+import { ApiError } from "@/lib/api-client";
 
 interface ResearchWorkspaceProps {
   theologianSlug: string;
@@ -20,6 +21,7 @@ export function ResearchWorkspace({
   onSubmit,
 }: ResearchWorkspaceProps) {
   const [question, setQuestion] = useState("");
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const createResult = useCreateResult();
 
   // Resolve slug → theologian ID
@@ -30,6 +32,7 @@ export function ResearchWorkspace({
 
   const handleSubmit = async () => {
     if (!question.trim() || !theologian?.id) return;
+    setSubmitError(null);
     try {
       const result = await createResult.mutateAsync({
         toolType: "research",
@@ -37,8 +40,8 @@ export function ResearchWorkspace({
         question: question.trim(),
       });
       onSubmit(result.id);
-    } catch {
-      // Error handled by mutation state
+    } catch (err) {
+      setSubmitError(formatSubmitError(err));
     }
   };
 
@@ -89,10 +92,8 @@ export function ResearchWorkspace({
             </p>
           </div>
 
-          {createResult.isError && (
-            <p className="text-sm text-terracotta">
-              Failed to submit research query. Please try again.
-            </p>
+          {submitError && (
+            <p className="text-sm text-terracotta">{submitError}</p>
           )}
 
           <Button
@@ -115,4 +116,12 @@ export function ResearchWorkspace({
       </Card>
     </section>
   );
+}
+
+function formatSubmitError(err: unknown): string {
+  if (err instanceof ApiError && err.code === "USAGE_LIMIT_REACHED") {
+    return "You've reached your monthly usage limit for this tool. Please reach out to help us understand your usage needs.";
+  }
+  if (err instanceof Error) return err.message;
+  return "Failed to submit research query. Please try again.";
 }

@@ -57,10 +57,6 @@ export interface AskCritiqueMetrics {
   };
 }
 
-export interface LLMReactionResponse {
-  reaction: string;
-}
-
 export interface LLMSynthesisResponse {
   comparison: string;
   key_agreements: string[];

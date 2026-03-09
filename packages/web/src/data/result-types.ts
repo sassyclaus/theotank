@@ -4,7 +4,7 @@ export type CreateResultPayload =
   | { toolType: "ask"; teamId: string; question: string }
   | { toolType: "poll"; teamId: string; question: string; options: string[] }
   | { toolType: "super_poll"; question: string; options: string[] }
-  | { toolType: "review"; teamId: string; reviewFileId: string; focusPrompt?: string }
+  | { toolType: "review"; teamId: string; reviewFileId: string; focusPrompt?: string; title?: string; description?: string }
   | { toolType: "research"; theologianId: string; question: string };
 
 // ── Result Summary (from GET /api/results) ──────────────────────────
@@ -50,6 +50,7 @@ export interface ResultDetail {
   }> | null;
   theologianName: string | null;
   theologianSlug: string | null;
+  isPrivate?: boolean;
 }
 
 // ── Progress Log (from GET /api/results/:id/progress) ───────────────
@@ -149,6 +150,7 @@ export interface ReviewContentGrade {
 export interface ReviewContentResponse {
   reviewFileLabel: string;
   focusPrompt: string | null;
+  description?: string | null;
   overallGrade: string;
   summary: string;
   grades: ReviewContentGrade[];

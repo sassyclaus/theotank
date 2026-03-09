@@ -5,7 +5,6 @@ import { Globe } from "lucide-react";
 import { modeConfig, type RoundtableMode } from "@/data/mock-roundtable";
 import { useNativeTeams, useMyTeams } from "@/hooks/useTeams";
 import { useCreateResult } from "@/hooks/useResults";
-import { useUsage } from "@/hooks/useUsage";
 import { ApiError } from "@/lib/api-client";
 import { ModeTabBar } from "./ModeTabBar";
 import { AskPanel } from "./AskPanel";
@@ -42,9 +41,6 @@ export function RoundtableWorkspace() {
   const { data: nativeTeams } = useNativeTeams();
   const { data: myTeams } = useMyTeams();
 
-  // ── Usage data ────────────────────────────────────────────────
-  const { data: usage } = useUsage();
-
   // ── Result mutation ─────────────────────────────────────────────
   const createResult = useCreateResult();
 
@@ -68,6 +64,9 @@ export function RoundtableWorkspace() {
   // ── Review state ────────────────────────────────────────────────
   const [selectedReviewFileId, setSelectedReviewFileId] = useState<string | null>(null);
   const [reviewFocusPrompt, setReviewFocusPrompt] = useState("");
+  const [reviewTitle, setReviewTitle] = useState("");
+  const [reviewDescription, setReviewDescription] = useState("");
+  const [reviewPastedFileId, setReviewPastedFileId] = useState<string | null>(null);
 
 
   // ── Tab transition ──────────────────────────────────────────────
@@ -175,18 +174,23 @@ export function RoundtableWorkspace() {
           teamId: selectedTeam,
           reviewFileId: selectedReviewFileId,
           focusPrompt: reviewFocusPrompt.trim() || undefined,
+          title: reviewTitle.trim() || undefined,
+          description: reviewDescription.trim() || undefined,
         });
         setWsPhase({ phase: "deliberating", resultId: result.id });
       } catch (err) {
         setWsPhase({ phase: "error", message: formatSubmitError(err) });
       }
     }
-  }, [selectedTeam, activeMode, askQuestion, pollQuestion, pollOptions, pollEveryone, selectedReviewFileId, reviewFocusPrompt, createResult]);
+  }, [selectedTeam, activeMode, askQuestion, pollQuestion, pollOptions, pollEveryone, selectedReviewFileId, reviewFocusPrompt, reviewTitle, reviewDescription, createResult]);
 
   const handleReset = useCallback(() => {
     setAskQuestion("");
     setPollQuestion("");
     setPollOptions(["", ""]);
+    setReviewTitle("");
+    setReviewDescription("");
+    setReviewPastedFileId(null);
     setWsPhase({ phase: "idle" });
   }, []);
 
@@ -199,9 +203,6 @@ export function RoundtableWorkspace() {
 
   const isSubmitting = wsPhase.phase === "submitting";
 
-  // Determine the effective tool type for usage display
-  const effectiveToolType = activeMode === "poll" && pollEveryone ? "super_poll" : activeMode;
-
   const isCTADisabled =
     isSubmitting ||
     (activeMode !== "poll" && selectedTeam === null) ||
@@ -210,13 +211,8 @@ export function RoundtableWorkspace() {
     (activeMode === "poll" &&
       (pollQuestion.trim().length === 0 ||
         pollOptions.filter((o) => o.trim().length > 0).length < 2)) ||
-    (activeMode === "review" && !selectedReviewFileId);
-
-  // Usage info based on effective tool type
-  const currentToolUsage = usage?.tools[effectiveToolType];
-  const isAtLimit = currentToolUsage
-    ? currentToolUsage.used >= currentToolUsage.limit
-    : false;
+    (activeMode === "review" && !selectedReviewFileId) ||
+    (activeMode === "review" && !reviewTitle.trim());
 
   // CTA label
   const ctaLabel = isSubmitting
@@ -275,8 +271,14 @@ export function RoundtableWorkspace() {
               <ReviewPanel
                 selectedFileId={selectedReviewFileId}
                 focusPrompt={reviewFocusPrompt}
+                title={reviewTitle}
+                description={reviewDescription}
+                pastedFileId={reviewPastedFileId}
                 onFileIdChange={setSelectedReviewFileId}
                 onFocusPromptChange={setReviewFocusPrompt}
+                onTitleChange={setReviewTitle}
+                onDescriptionChange={setReviewDescription}
+                onPastedFileIdChange={setReviewPastedFileId}
               />
             )}
           </div>
@@ -301,15 +303,6 @@ export function RoundtableWorkspace() {
             </label>
           )}
 
-          {/* Super-poll callout when toggled on */}
-          {activeMode === "poll" && pollEveryone && (
-            <div className="rounded-lg border border-teal/20 bg-teal/5 px-4 py-3">
-              <p className="text-sm text-teal">
-                Super-polls have a separate, lower monthly limit due to the scale of polling all theologians.
-              </p>
-            </div>
-          )}
-
           {/* Team selector — hidden when poll everyone is active */}
           {!(activeMode === "poll" && pollEveryone) && (
             <>
@@ -328,23 +321,10 @@ export function RoundtableWorkspace() {
             </>
           )}
 
-          {/* Usage indicator */}
-          {currentToolUsage && (
-            <div className="flex items-center justify-between text-xs text-text-secondary">
-              <span>
-                {currentToolUsage.used} / {currentToolUsage.limit}{" "}
-                {pollEveryone && activeMode === "poll" ? "super poll" : activeMode} uses this month
-              </span>
-              {isAtLimit && (
-                <span className="font-medium text-terracotta">Limit reached</span>
-              )}
-            </div>
-          )}
-
           <Button
             size="lg"
             className="w-full"
-            disabled={isCTADisabled || isAtLimit}
+            disabled={isCTADisabled}
             onClick={handleSubmit}
           >
             {ctaLabel}
@@ -362,9 +342,7 @@ export function RoundtableWorkspace() {
 
 function formatSubmitError(err: unknown): string {
   if (err instanceof ApiError && err.code === "USAGE_LIMIT_REACHED") {
-    const { toolType, used, limit } = err.data;
-    const label = String(toolType).replace("_", " ");
-    return `You've reached your monthly ${label} limit (${used}/${limit}). Try again next month or contact us for more.`;
+    return "You've reached your monthly usage limit for this tool. Please reach out to help us understand your usage needs.";
   }
   if (err instanceof Error) return err.message;
   return "Submission failed";

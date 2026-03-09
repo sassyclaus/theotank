@@ -128,7 +128,19 @@ export default function TheologianDetail() {
       </div>
 
       {/* Bio */}
-      <p className="mt-8 leading-relaxed text-text-primary">{bio}</p>
+      <div className="mt-8 space-y-4">
+        {bio
+          .split(/\\n|\n/)
+          .filter((s) => s.trim())
+          .map((paragraph, i) => (
+            <div>
+              <p key={i} className="leading-relaxed text-text-primary">
+                {paragraph.trim()}
+              </p>
+              <p>hello</p>
+            </div>
+          ))}
+      </div>
 
       {/* Key Works */}
       {keyWorks.length > 0 && (

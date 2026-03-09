@@ -1,11 +1,13 @@
 import { useParams, Link } from "react-router";
-import { useResult, useResultContent, useResultProgress } from "@/hooks/useResults";
+import { useAuth } from "@clerk/clerk-react";
+import { useResult, useResultContent, useResultProgress, useUpdateVisibility } from "@/hooks/useResults";
 import { ReportHeader } from "@/components/results/ReportHeader";
 import { AskResultBody } from "@/components/results/AskResultBody";
 import { PollResultBody } from "@/components/results/PollResultBody";
 import { SuperPollResultBody } from "@/components/results/SuperPollResultBody";
 import { ReviewResultBody } from "@/components/results/ReviewResultBody";
 import { ResearchResultBody } from "@/components/results/ResearchResultBody";
+import { ResultDisclaimer } from "@/components/results/ResultDisclaimer";
 import { ProgressTimeline } from "@/components/roundtable/ProgressTimeline";
 import { Card, CardContent } from "@/components/ui/card";
 import { getResultById } from "@/data/mock-results";
@@ -14,6 +16,8 @@ import type { AskContentResponse, PollContentResponse, ReviewContentResponse, Re
 
 export default function Result() {
   const { id } = useParams<{ id: string }>();
+  const { userId } = useAuth();
+  const visibilityMutation = useUpdateVisibility();
 
   // Try API first
   const isActive = (status?: string) =>
@@ -111,6 +115,7 @@ export default function Result() {
         return (
           <div className="mx-auto max-w-4xl px-4 py-12 lg:px-8">
             <ReportHeader result={mapped} resultId={apiResult.id} pdfKey={apiResult.pdfKey} teamMembers={apiResult.teamMembers} />
+            <ResultDisclaimer toolType="poll" />
             <PollResultBody result={mapped} />
           </div>
         );
@@ -124,6 +129,7 @@ export default function Result() {
         return (
           <div className="mx-auto max-w-4xl px-4 py-12 lg:px-8">
             <ReportHeader result={mapped} resultId={apiResult.id} pdfKey={apiResult.pdfKey} teamMembers={apiResult.teamMembers} />
+            <ResultDisclaimer toolType="super_poll" />
             <SuperPollResultBody pollResult={mapped} rawSelections={pollContent.theologianSelections} />
           </div>
         );
@@ -131,6 +137,7 @@ export default function Result() {
 
       if (apiResult.toolType === "review") {
         const reviewContent = content as ReviewContentResponse;
+        const isOwner = apiResult.userId === userId;
         const mapped: FullResult = {
           id: apiResult.id,
           tool: "review",
@@ -150,8 +157,29 @@ export default function Result() {
 
         return (
           <div className="mx-auto max-w-4xl px-4 py-12 lg:px-8">
-            <ReportHeader result={mapped} resultId={apiResult.id} pdfKey={apiResult.pdfKey} teamMembers={apiResult.teamMembers} />
-            <ReviewResultBody result={mapped} wasTruncated={reviewContent.wasTruncated} originalCharCount={reviewContent.originalCharCount} />
+            <ReportHeader
+              result={mapped}
+              resultId={apiResult.id}
+              pdfKey={apiResult.pdfKey}
+              teamMembers={apiResult.teamMembers}
+              isOwner={isOwner}
+              isPrivate={apiResult.isPrivate}
+              onToggleVisibility={() => {
+                visibilityMutation.mutate({
+                  id: apiResult.id,
+                  isPrivate: !apiResult.isPrivate,
+                });
+              }}
+            />
+            <ResultDisclaimer toolType="review" />
+            <ReviewResultBody
+              result={mapped}
+              wasTruncated={reviewContent.wasTruncated}
+              originalCharCount={reviewContent.originalCharCount}
+              description={reviewContent.description}
+              resultId={apiResult.id}
+              isOwner={isOwner}
+            />
           </div>
         );
       }
@@ -178,6 +206,7 @@ export default function Result() {
         return (
           <div className="mx-auto max-w-4xl px-4 py-12 lg:px-8">
             <ReportHeader result={mapped} resultId={apiResult.id} pdfKey={apiResult.pdfKey} />
+            <ResultDisclaimer toolType="research" />
             <ResearchResultBody content={researchContent} />
           </div>
         );
@@ -202,6 +231,7 @@ export default function Result() {
       return (
         <div className="mx-auto max-w-4xl px-4 py-12 lg:px-8">
           <ReportHeader result={mapped} resultId={apiResult.id} pdfKey={apiResult.pdfKey} teamMembers={apiResult.teamMembers} />
+          <ResultDisclaimer toolType="ask" />
           <AskResultBody result={mapped} keyAgreements={askContent.synthesis.keyAgreements} keyDisagreements={askContent.synthesis.keyDisagreements} />
         </div>
       );
@@ -225,6 +255,7 @@ export default function Result() {
     return (
       <div className="mx-auto max-w-4xl px-4 py-12 lg:px-8">
         <ReportHeader result={mockResult} />
+        <ResultDisclaimer toolType={mockResult.tool as "ask" | "poll" | "review" | "research"} />
         {mockResult.tool === "ask" && <AskResultBody result={mockResult} />}
         {mockResult.tool === "poll" && <PollResultBody result={mockResult} />}
         {mockResult.tool === "review" && <ReviewResultBody result={mockResult} />}

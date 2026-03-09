@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { getDb } from "@theotank/rds/db";
 import { reviewFiles, jobs } from "@theotank/rds/schema";
 import { eq, and, desc } from "drizzle-orm";
-import { presignPutUrl, deleteObject } from "../lib/s3";
+import { presignPutUrl, putObject, deleteObject } from "../lib/s3";
 import type { AppEnv } from "../lib/types";
 
 const ALLOWED_TYPES = [
@@ -82,6 +82,57 @@ app.post("/upload-url", async (c) => {
       uploadUrl,
     },
     201
+  );
+});
+
+// POST /api/review-files/paste — create review file from pasted text
+app.post("/paste", async (c) => {
+  const userId = c.get("userId");
+  const body = await c.req.json<{ text: string; label?: string }>();
+
+  if (!body.text || body.text.trim().length === 0) {
+    return c.json({ error: "Text content is required" }, 400);
+  }
+
+  const text = body.text;
+  const label = body.label?.trim() || "Pasted text";
+  const charCount = text.length;
+
+  const db = getDb();
+
+  const [row] = await db
+    .insert(reviewFiles)
+    .values({
+      userId,
+      label,
+      fileName: "pasted-text.txt",
+      contentType: "text/plain",
+      fileKey: "", // placeholder
+      status: "ready",
+      charCount,
+    })
+    .returning();
+
+  const textStorageKey = `review-files/${userId}/${row.id}/extracted/text.txt`;
+
+  await putObject(textStorageKey, text, "text/plain");
+
+  await db
+    .update(reviewFiles)
+    .set({
+      fileKey: textStorageKey,
+      textStorageKey,
+    })
+    .where(eq(reviewFiles.id, row.id));
+
+  return c.json(
+    {
+      id: row.id,
+      label,
+      charCount,
+      status: "ready",
+    },
+    201,
   );
 });
 

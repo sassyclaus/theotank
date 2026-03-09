@@ -46,7 +46,7 @@ function birthYearToEra(born: number): Era {
   return "Modern";
 }
 
-const POLL_BATCH_SIZE = 20;
+const POLL_BATCH_SIZE = 5;
 
 // ── Main processor ─────────────────────────────────────────────────
 

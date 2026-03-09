@@ -5,6 +5,7 @@ import {
   confirmReviewFileUpload,
   deleteReviewFile,
   uploadFileToPresignedUrl,
+  pasteReviewFileText,
 } from "@/lib/api";
 import type { ReviewFile } from "@/data/review-file-types";
 
@@ -135,6 +136,22 @@ export function useDeleteReviewFile() {
       if (context?.previous) {
         queryClient.setQueryData(reviewFileKeys.list(), context.previous);
       }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: reviewFileKeys.list() });
+    },
+  });
+}
+
+/**
+ * Create a review file from pasted text.
+ */
+export function usePasteReviewFile() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ text, label }: { text: string; label?: string }) => {
+      return pasteReviewFileText(text, label);
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: reviewFileKeys.list() });

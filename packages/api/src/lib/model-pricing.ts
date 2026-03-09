@@ -13,6 +13,25 @@ export const WHISPER_COST_PER_MINUTE = 0.006;
 
 const FALLBACK_PRICING = { input: 1.00, output: 4.00 };
 
+/**
+ * Generate a SQL CASE expression that mirrors `estimateCost()` logic.
+ * Used in aggregate queries so cost computation stays in sync.
+ */
+export function costCaseExpression(): string {
+  const cases = Object.entries(MODEL_PRICING)
+    .map(
+      ([model, { input, output }]) =>
+        `WHEN model = '${model}' THEN (prompt_tokens / 1000000.0) * ${input} + (completion_tokens / 1000000.0) * ${output}`,
+    )
+    .join("\n          ");
+  return `CASE
+      WHEN model = 'whisper-1' AND duration_seconds IS NOT NULL
+        THEN ${WHISPER_COST_PER_MINUTE} * (duration_seconds / 60.0)
+      ${cases}
+      ELSE (prompt_tokens / 1000000.0) * ${FALLBACK_PRICING.input} + (completion_tokens / 1000000.0) * ${FALLBACK_PRICING.output}
+    END`;
+}
+
 export function estimateCost(
   model: string,
   promptTokens: number,

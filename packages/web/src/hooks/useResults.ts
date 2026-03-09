@@ -6,6 +6,8 @@ import {
   getResult,
   getResultProgress,
   getResultContent,
+  updateResultVisibility,
+  getResultSourceText,
   createPdfJob,
   getPdfStatus,
   getPublicResultMeta,
@@ -20,6 +22,7 @@ const resultKeys = {
   progress: (id: string) => [...resultKeys.all, "progress", id] as const,
   content: (id: string) => [...resultKeys.all, "content", id] as const,
   pdfStatus: (id: string) => [...resultKeys.all, "pdf-status", id] as const,
+  sourceText: (id: string) => [...resultKeys.all, "source-text", id] as const,
   publicMeta: (id: string) => ["public-result", "meta", id] as const,
   publicContent: (id: string) => ["public-result", "content", id] as const,
 };
@@ -101,6 +104,32 @@ export function usePdfStatus(id: string | undefined, polling = false) {
     queryFn: () => getPdfStatus(id!),
     enabled: !!id,
     refetchInterval: polling ? 2000 : false,
+  });
+}
+
+export function useUpdateVisibility() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, isPrivate }: { id: string; isPrivate: boolean }) =>
+      updateResultVisibility(id, isPrivate),
+    onSuccess: (_data, { id }) => {
+      queryClient.invalidateQueries({ queryKey: resultKeys.detail(id) });
+    },
+  });
+}
+
+export function useResultSourceText(id: string | undefined, enabled = false) {
+  return useQuery({
+    queryKey: resultKeys.sourceText(id!),
+    queryFn: async () => {
+      const { url, label } = await getResultSourceText(id!);
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("Failed to fetch source text");
+      const text = await res.text();
+      return { text, label };
+    },
+    enabled: !!id && enabled,
+    staleTime: Infinity,
   });
 }
 

@@ -49,12 +49,6 @@ export function CorpusCard({ corpus, onSelect }: CorpusCardProps) {
           {corpus.description}
         </p>
 
-        {isAvailable && (
-          <p className="mb-4 text-xs text-text-secondary/70">
-            Limited queries per month
-          </p>
-        )}
-
         <Button
           variant={isAvailable ? "research" : "outline"}
           className="w-full"

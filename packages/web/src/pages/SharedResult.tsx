@@ -6,6 +6,7 @@ import { SharedAskBody } from "@/components/shared/SharedAskBody";
 import { SharedPollBody } from "@/components/shared/SharedPollBody";
 import { SharedReviewBody } from "@/components/shared/SharedReviewBody";
 import { GatedContentBanner } from "@/components/shared/GatedContentBanner";
+import { ResultDisclaimer } from "@/components/results/ResultDisclaimer";
 import type {
   AskContentResponse,
   PollContentResponse,
@@ -56,6 +57,7 @@ export default function SharedResult() {
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
       <SharedReportHeader meta={meta} />
+      <ResultDisclaimer toolType={meta.toolType as "ask" | "poll" | "super_poll" | "review" | "research"} />
 
       {meta.toolType === "ask" && (
         <SharedAskBody content={content as AskContentResponse} />

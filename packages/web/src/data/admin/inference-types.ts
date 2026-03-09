@@ -51,3 +51,35 @@ export interface InferenceData {
   modelBreakdown: InferenceModelBreakdown[];
   modelPricing: Record<string, { input: number; output: number }>;
 }
+
+// ── Results Feed ─────────────────────────────────────────────────────
+
+export interface InferenceResultFeedItem {
+  resultId: string;
+  title: string;
+  toolType: string;
+  status: string;
+  userName: string | null;
+  userEmail: string | null;
+  inferenceCalls: number;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  estimatedCost: number;
+  createdAt: string;
+}
+
+export interface InferenceResultFeedResponse {
+  results: InferenceResultFeedItem[];
+  total: number;
+}
+
+export interface InferenceResultFeedParams {
+  period?: number;
+  toolType?: string;
+  search?: string;
+  limit?: number;
+  offset?: number;
+  sort?: "createdAt" | "cost";
+  order?: "asc" | "desc";
+}

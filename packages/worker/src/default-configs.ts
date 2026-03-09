@@ -11,7 +11,6 @@ export interface AskAlgoConfig {
   defaultModels: {
     perspective: ModelRef;
     critique: ModelRef;
-    reaction: ModelRef;
     synthesis: ModelRef;
   };
 }
@@ -27,6 +26,7 @@ export interface PollAlgoConfig {
 export interface ReviewAlgoConfig {
   defaultModels: {
     review: ModelRef;
+    critique: ModelRef;
     synthesis: ModelRef;
   };
 }
@@ -46,7 +46,7 @@ export const ALGO_VERSIONS: Record<ToolType, string> = {
   ask: "2.0.0",
   poll: "1.0.0",
   super_poll: "1.0.0",
-  review: "1.0.0",
+  review: "1.1.0",
   research: "1.0.0",
 };
 
@@ -56,7 +56,6 @@ export const DEFAULT_ASK_CONFIG: AskAlgoConfig = {
   defaultModels: {
     perspective: { model: "gpt-5.1", provider: "openai" },
     critique: { model: "gpt-5-mini-2025-08-07", provider: "openai" },
-    reaction: { model: "gpt-5-mini-2025-08-07", provider: "openai" },
     synthesis: { model: "gpt-5-mini-2025-08-07", provider: "openai" },
   },
 };
@@ -72,6 +71,7 @@ export const DEFAULT_POLL_CONFIG: PollAlgoConfig = {
 export const DEFAULT_REVIEW_CONFIG: ReviewAlgoConfig = {
   defaultModels: {
     review: { model: "gpt-5-mini-2025-08-07", provider: "openai" },
+    critique: { model: "gpt-5-mini-2025-08-07", provider: "openai" },
     synthesis: { model: "gpt-5-mini-2025-08-07", provider: "openai" },
   },
 };

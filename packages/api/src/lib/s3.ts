@@ -68,6 +68,20 @@ export async function presignGetUrl(
   return getSignedUrl(getClient(), command, { expiresIn });
 }
 
+export async function putObject(
+  key: string,
+  body: string | Buffer,
+  contentType: string,
+): Promise<void> {
+  const command = new PutObjectCommand({
+    Bucket: bucket,
+    Key: key,
+    Body: body,
+    ContentType: contentType,
+  });
+  await getClient().send(command);
+}
+
 export async function deleteObject(key: string): Promise<void> {
   const command = new DeleteObjectCommand({
     Bucket: bucket,
