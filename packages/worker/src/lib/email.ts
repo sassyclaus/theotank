@@ -49,6 +49,20 @@ export async function getEmailFromClerk(
   }
 }
 
+// ── Helpers ──────────────────────────────────────────────────────────
+
+const SUBJECT_TITLE_MAX = 60;
+
+function buildSubjectLine(toolLabel: string, rawTitle: string): string {
+  const clean = rawTitle.replace(/[\r\n]+/g, " ").replace(/\s+/g, " ").trim();
+  if (!clean) return `Your ${toolLabel} result is ready`;
+  const truncated =
+    clean.length > SUBJECT_TITLE_MAX
+      ? `${clean.slice(0, SUBJECT_TITLE_MAX)}\u2026`
+      : clean;
+  return `Your ${toolLabel} result is ready \u2014 ${truncated}`;
+}
+
 // ── Send result-completed email ───────────────────────────────────────
 
 type ToolType = "ask" | "poll" | "super_poll" | "review" | "research";
@@ -95,7 +109,7 @@ export async function sendResultCompletedEmail({
   const { error } = await client.emails.send({
     from: config.email.from,
     to,
-    subject: `Your ${TOOL_LABELS[toolType]} result is ready — ${title}`,
+    subject: buildSubjectLine(TOOL_LABELS[toolType], title),
     html,
   });
 
