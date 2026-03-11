@@ -25,8 +25,8 @@ export function WaitlistOverview({ stats }: WaitlistOverviewProps) {
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label="Referred Signups" value={String(stats.withReferral)} />
         <StatCard
-          label="Questions Submitted"
-          value={String(stats.withQuestion)}
+          label="Survey Responses"
+          value={String(stats.withSurvey)}
         />
       </div>
     </div>

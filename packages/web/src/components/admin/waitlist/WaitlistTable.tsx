@@ -49,28 +49,26 @@ export function WaitlistTable({ signups }: WaitlistTableProps) {
       ),
     },
     {
-      key: "persona",
-      header: "Persona",
-      render: (row: WaitlistSignup) =>
-        row.persona ? (
-          <span className="rounded bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
-            {row.persona}
-          </span>
-        ) : (
-          <span className="text-gray-400">—</span>
-        ),
-    },
-    {
-      key: "toolInterest",
-      header: "Tool Interest",
-      render: (row: WaitlistSignup) =>
-        row.toolInterest ? (
-          <span className="rounded bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
-            {row.toolInterest}
-          </span>
-        ) : (
-          <span className="text-gray-400">—</span>
-        ),
+      key: "survey",
+      header: "Survey",
+      render: (row: WaitlistSignup) => {
+        if (!row.surveyResponses) {
+          return <span className="text-gray-400">&mdash;</span>;
+        }
+        const values = Object.values(row.surveyResponses).flat();
+        return (
+          <div className="flex flex-wrap gap-1">
+            {values.map((v, i) => (
+              <span
+                key={i}
+                className="rounded bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700"
+              >
+                {v}
+              </span>
+            ))}
+          </div>
+        );
+      },
     },
     {
       key: "referralCount",

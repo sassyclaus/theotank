@@ -1,27 +1,11 @@
 import { useState, useEffect } from "react";
-import { MessageCircle, BarChart3, ClipboardCheck, BookOpen, Mic, GraduationCap, Church, Sparkles, Mail } from "lucide-react";
+import { Mail } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { submitWaitlistSignup } from "@/lib/api";
 
-const toolOptions = [
-  { value: "ask", label: "Ask", description: "Theologian panels on your questions", icon: MessageCircle },
-  { value: "poll", label: "Poll", description: "Survey the full roster", icon: BarChart3 },
-  { value: "review", label: "Review", description: "Get your content graded", icon: ClipboardCheck },
-  { value: "research", label: "Research", description: "Cited primary sources", icon: BookOpen },
-];
-
-const personaOptions = [
-  { value: "creator", label: "Content creator", icon: Mic },
-  { value: "pastor", label: "Pastor / ministry", icon: Church },
-  { value: "student", label: "Student / academic", icon: GraduationCap },
-  { value: "enthusiast", label: "Enthusiast", icon: Sparkles },
-];
-
 export default function WaitlistForm() {
   const [email, setEmail] = useState("");
-  const [toolInterest, setToolInterest] = useState<string | undefined>();
-  const [persona, setPersona] = useState<string | undefined>();
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<{
@@ -61,8 +45,6 @@ export default function WaitlistForm() {
     try {
       const data = await submitWaitlistSignup({
         email: email.trim(),
-        toolInterest,
-        persona,
         ...utmParams,
       });
       setResult(data);
@@ -104,89 +86,6 @@ export default function WaitlistForm() {
           required
         />
       </div>
-
-      {/* Tool interest */}
-      <fieldset>
-        <legend className="text-sm font-medium text-text-primary">
-          I'm most interested in: <span className="font-normal text-text-secondary">(optional)</span>
-        </legend>
-        <div className="mt-3 grid grid-cols-2 gap-2.5">
-          {toolOptions.map((opt) => {
-            const Icon = opt.icon;
-            const selected = toolInterest === opt.value;
-            return (
-              <label
-                key={opt.value}
-                className={`relative flex cursor-pointer flex-col items-center gap-1.5 rounded-xl border-2 px-3 py-4 text-center transition-all ${
-                  selected
-                    ? "border-teal bg-teal-light shadow-sm"
-                    : "border-surface bg-white hover:border-text-secondary/20 hover:shadow-sm"
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="tool_interest"
-                  value={opt.value}
-                  checked={selected}
-                  onChange={(e) => setToolInterest(e.target.value)}
-                  className="sr-only"
-                />
-                <Icon
-                  size={22}
-                  className={selected ? "text-teal" : "text-text-secondary/60"}
-                  strokeWidth={1.75}
-                />
-                <span className={`text-sm font-semibold ${selected ? "text-teal" : "text-text-primary"}`}>
-                  {opt.label}
-                </span>
-                <span className="text-xs leading-tight text-text-secondary">
-                  {opt.description}
-                </span>
-              </label>
-            );
-          })}
-        </div>
-      </fieldset>
-
-      {/* Persona */}
-      <fieldset>
-        <legend className="text-sm font-medium text-text-primary">
-          I'm a: <span className="font-normal text-text-secondary">(optional)</span>
-        </legend>
-        <div className="mt-3 grid grid-cols-2 gap-2.5">
-          {personaOptions.map((opt) => {
-            const Icon = opt.icon;
-            const selected = persona === opt.value;
-            return (
-              <label
-                key={opt.value}
-                className={`flex cursor-pointer items-center gap-2.5 rounded-xl border-2 px-4 py-3 transition-all ${
-                  selected
-                    ? "border-teal bg-teal-light shadow-sm"
-                    : "border-surface bg-white hover:border-text-secondary/20 hover:shadow-sm"
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="persona"
-                  value={opt.value}
-                  checked={selected}
-                  onChange={(e) => setPersona(e.target.value)}
-                  className="sr-only"
-                />
-                <Icon
-                  size={18}
-                  className={selected ? "text-teal" : "text-text-secondary/60"}
-                  strokeWidth={1.75}
-                />
-                <span className={`text-sm font-medium ${selected ? "text-teal" : "text-text-primary"}`}>
-                  {opt.label}
-                </span>
-              </label>
-            );
-          })}
-        </div>
-      </fieldset>
 
       <Button type="submit" variant="gold" size="lg" className="w-full" disabled={submitting}>
         {submitting ? "Joining..." : "Join the Waitlist"}

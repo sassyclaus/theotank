@@ -14,6 +14,7 @@ export interface ResultTheologian {
   dates: string;
   tradition: string;
   color: string;
+  imageUrl?: string | null;
 }
 
 interface ResultBase {

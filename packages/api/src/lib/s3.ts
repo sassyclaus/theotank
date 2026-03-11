@@ -121,3 +121,7 @@ export async function headObject(key: string): Promise<boolean> {
 export function publicAssetUrl(key: string): string {
   return `${publicAssetBaseUrl}/${key}`;
 }
+
+export function publicAssetUrlVersioned(key: string, updatedAt: Date): string {
+  return `${publicAssetBaseUrl}/${key}?v=${updatedAt.getTime()}`;
+}

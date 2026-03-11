@@ -8,6 +8,7 @@ interface TheologianPickerItemProps {
   initials: string;
   tradition: string | null;
   color: string;
+  imageUrl?: string | null;
   selected: boolean;
   onToggle: () => void;
 }
@@ -17,6 +18,7 @@ export function TheologianPickerItem({
   initials,
   tradition,
   color,
+  imageUrl,
   selected,
   onToggle,
 }: TheologianPickerItemProps) {
@@ -29,12 +31,16 @@ export function TheologianPickerItem({
         selected ? "bg-teal/10" : "hover:bg-surface",
       )}
     >
-      <span
-        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
-        style={{ backgroundColor: color }}
-      >
-        {initials}
-      </span>
+      {imageUrl ? (
+        <img src={imageUrl} alt={name} className="h-8 w-8 shrink-0 rounded-full object-cover" />
+      ) : (
+        <span
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
+          style={{ backgroundColor: color }}
+        >
+          {initials}
+        </span>
+      )}
       <span className="min-w-0 flex-1 truncate text-sm text-text-primary">
         {name}
       </span>

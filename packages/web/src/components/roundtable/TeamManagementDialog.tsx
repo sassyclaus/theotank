@@ -203,12 +203,16 @@ function NativeTeamList({ teams }: { teams: NativeTeamSummary[] }) {
                       key={m.theologianId}
                       className="flex items-center gap-1.5 rounded-full bg-surface px-2.5 py-1"
                     >
-                      <span
-                        className="flex h-5 w-5 items-center justify-center rounded-full text-[9px] font-bold text-white"
-                        style={{ backgroundColor: m.color }}
-                      >
-                        {m.initials}
-                      </span>
+                      {m.imageUrl ? (
+                        <img src={m.imageUrl} alt={m.name} className="h-5 w-5 rounded-full object-cover" />
+                      ) : (
+                        <span
+                          className="flex h-5 w-5 items-center justify-center rounded-full text-[9px] font-bold text-white"
+                          style={{ backgroundColor: m.color }}
+                        >
+                          {m.initials}
+                        </span>
+                      )}
                       <span className="text-xs text-text-primary">{m.name}</span>
                     </span>
                   ))}
@@ -266,14 +270,18 @@ function MyTeamList({ teams, onEdit, onDelete }: MyTeamListProps) {
             )}
             <div className="mt-1.5 flex items-center gap-1">
               {team.members.slice(0, 4).map((m) => (
-                <span
-                  key={m.theologianId}
-                  className="flex h-5 w-5 items-center justify-center rounded-full text-[9px] font-bold text-white"
-                  style={{ backgroundColor: m.color }}
-                  title={m.name}
-                >
-                  {m.initials}
-                </span>
+                m.imageUrl ? (
+                  <img key={m.theologianId} src={m.imageUrl} alt={m.name} title={m.name} className="h-5 w-5 rounded-full object-cover" />
+                ) : (
+                  <span
+                    key={m.theologianId}
+                    className="flex h-5 w-5 items-center justify-center rounded-full text-[9px] font-bold text-white"
+                    style={{ backgroundColor: m.color }}
+                    title={m.name}
+                  >
+                    {m.initials}
+                  </span>
+                )
               ))}
               {team.members.length > 4 && (
                 <span className="ml-1 text-xs text-text-secondary">
@@ -414,12 +422,16 @@ function TeamEditorView({ team, onBack }: TeamEditorViewProps) {
                     key={t.id}
                     className="flex items-center gap-1.5 rounded-full bg-surface py-1 pl-1.5 pr-2"
                   >
-                    <span
-                      className="flex h-5 w-5 items-center justify-center rounded-full text-[9px] font-bold text-white"
-                      style={{ backgroundColor: t.color }}
-                    >
-                      {t.initials}
-                    </span>
+                    {t.imageUrl ? (
+                      <img src={t.imageUrl} alt={t.name} className="h-5 w-5 rounded-full object-cover" />
+                    ) : (
+                      <span
+                        className="flex h-5 w-5 items-center justify-center rounded-full text-[9px] font-bold text-white"
+                        style={{ backgroundColor: t.color }}
+                      >
+                        {t.initials}
+                      </span>
+                    )}
                     <span className="text-xs text-text-primary">{t.name}</span>
                     <button
                       type="button"
@@ -471,6 +483,7 @@ function TeamEditorView({ team, onBack }: TeamEditorViewProps) {
                   initials={t.initials}
                   tradition={t.tradition}
                   color={t.color}
+                  imageUrl={t.imageUrl}
                   selected={selectedIds.has(t.id)}
                   onToggle={() => toggleTheologian(t.id)}
                 />

@@ -7,8 +7,8 @@ import type { WaitlistListParams } from "@/data/admin/waitlist-types";
 
 export default function Waitlist() {
   const [search, setSearch] = useState("");
-  const [persona, setPersona] = useState("");
-  const [toolInterest, setToolInterest] = useState("");
+  const [surveyKey, setSurveyKey] = useState("");
+  const [surveyValue, setSurveyValue] = useState("");
   const [emailConfirmed, setEmailConfirmed] = useState("");
   const [offset, setOffset] = useState(0);
   const limit = 50;
@@ -19,8 +19,7 @@ export default function Waitlist() {
     sort: "createdAt",
     order: "desc",
     ...(search && { search }),
-    ...(persona && { persona }),
-    ...(toolInterest && { toolInterest }),
+    ...(surveyKey && surveyValue && { surveyKey, surveyValue }),
     ...(emailConfirmed && { emailConfirmed }),
   };
 
@@ -29,9 +28,12 @@ export default function Waitlist() {
   const signups = data?.signups ?? [];
   const total = data?.total ?? 0;
 
-  // Derive filter options from stats breakdowns
-  const personaOptions = stats ? Object.keys(stats.byPersona).sort() : [];
-  const toolOptions = stats ? Object.keys(stats.byToolInterest).sort() : [];
+  // Derive survey filter keys from stats
+  const surveyKeys = stats ? Object.keys(stats.bySurvey).sort() : [];
+  const surveyValues =
+    stats && surveyKey && stats.bySurvey[surveyKey]
+      ? Object.keys(stats.bySurvey[surveyKey]).sort()
+      : [];
 
   if (isLoading && !data) {
     return (
@@ -57,36 +59,41 @@ export default function Waitlist() {
             placeholder="Search by email..."
           />
         </div>
-        <select
-          value={persona}
-          onChange={(e) => {
-            setPersona(e.target.value);
-            setOffset(0);
-          }}
-          className="rounded border border-gray-300 px-2 py-2 text-sm"
-        >
-          <option value="">All personas</option>
-          {personaOptions.map((p) => (
-            <option key={p} value={p}>
-              {p}
-            </option>
-          ))}
-        </select>
-        <select
-          value={toolInterest}
-          onChange={(e) => {
-            setToolInterest(e.target.value);
-            setOffset(0);
-          }}
-          className="rounded border border-gray-300 px-2 py-2 text-sm"
-        >
-          <option value="">All tools</option>
-          {toolOptions.map((t) => (
-            <option key={t} value={t}>
-              {t}
-            </option>
-          ))}
-        </select>
+        {surveyKeys.length > 0 && (
+          <select
+            value={surveyKey}
+            onChange={(e) => {
+              setSurveyKey(e.target.value);
+              setSurveyValue("");
+              setOffset(0);
+            }}
+            className="rounded border border-gray-300 px-2 py-2 text-sm"
+          >
+            <option value="">All survey keys</option>
+            {surveyKeys.map((k) => (
+              <option key={k} value={k}>
+                {k}
+              </option>
+            ))}
+          </select>
+        )}
+        {surveyKey && surveyValues.length > 0 && (
+          <select
+            value={surveyValue}
+            onChange={(e) => {
+              setSurveyValue(e.target.value);
+              setOffset(0);
+            }}
+            className="rounded border border-gray-300 px-2 py-2 text-sm"
+          >
+            <option value="">All values</option>
+            {surveyValues.map((v) => (
+              <option key={v} value={v}>
+                {v}
+              </option>
+            ))}
+          </select>
+        )}
         <select
           value={emailConfirmed}
           onChange={(e) => {

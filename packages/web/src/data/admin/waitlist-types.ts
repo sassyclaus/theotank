@@ -5,16 +5,15 @@ export interface WaitlistStats {
   thisWeek: number;
   withReferral: number;
   withQuestion: number;
-  byPersona: Record<string, number>;
-  byToolInterest: Record<string, number>;
+  withSurvey: number;
+  bySurvey: Record<string, Record<string, number>>;
 }
 
 export interface WaitlistSignup {
   id: string;
   email: string;
   emailConfirmed: boolean;
-  toolInterest: string | null;
-  persona: string | null;
+  surveyResponses: Record<string, string | string[]> | null;
   referralCode: string;
   referredBy: string | null;
   referralCount: number;
@@ -28,8 +27,8 @@ export interface WaitlistSignup {
 
 export interface WaitlistListParams {
   search?: string;
-  persona?: string;
-  toolInterest?: string;
+  surveyKey?: string;
+  surveyValue?: string;
   emailConfirmed?: string;
   limit?: number;
   offset?: number;

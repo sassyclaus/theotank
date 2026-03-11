@@ -31,6 +31,8 @@ app.get("/", async (c) => {
           slug: theologians.slug,
           initials: theologians.initials,
           tradition: theologians.tradition,
+          imageKey: theologians.imageKey,
+          updatedAt: theologians.updatedAt,
         })
         .from(teamMemberships)
         .innerJoin(theologians, eq(teamMemberships.theologianId, theologians.id))
@@ -98,6 +100,8 @@ app.post("/", async (c) => {
         slug: theologians.slug,
         initials: theologians.initials,
         tradition: theologians.tradition,
+        imageKey: theologians.imageKey,
+        updatedAt: theologians.updatedAt,
       })
       .from(teamMemberships)
       .innerJoin(theologians, eq(teamMemberships.theologianId, theologians.id))
@@ -238,6 +242,8 @@ app.put("/:id", async (c) => {
         slug: theologians.slug,
         initials: theologians.initials,
         tradition: theologians.tradition,
+        imageKey: theologians.imageKey,
+        updatedAt: theologians.updatedAt,
       })
       .from(teamMemberships)
       .innerJoin(theologians, eq(teamMemberships.theologianId, theologians.id))

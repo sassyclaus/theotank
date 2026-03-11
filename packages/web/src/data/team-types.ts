@@ -5,6 +5,7 @@ export interface TeamMember {
   initials: string;
   tradition: string | null;
   color: string;
+  imageUrl: string | null;
 }
 
 export interface NativeTeamSummary {

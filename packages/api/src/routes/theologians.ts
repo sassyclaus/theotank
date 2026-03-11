@@ -3,7 +3,7 @@ import { getDb } from "@theotank/rds/db";
 import { theologians, teams, teamMemberships } from "@theotank/rds/schema";
 import { eq, asc, and } from "drizzle-orm";
 import { colorForTradition } from "../lib/tradition-colors";
-import { publicAssetUrl } from "../lib/s3";
+import { publicAssetUrlVersioned } from "../lib/s3";
 import type { AppEnv } from "../lib/types";
 
 const app = new Hono<AppEnv>();
@@ -25,7 +25,7 @@ function shapeTheologian(
     tagline: row.tagline,
     bio: row.bio,
     keyWorks: row.keyWorks,
-    imageUrl: row.imageKey ? publicAssetUrl(row.imageKey) : null,
+    imageUrl: row.imageKey ? publicAssetUrlVersioned(row.imageKey, row.updatedAt) : null,
     hasResearch: row.hasResearch,
     nativeTeams: nativeTeamNames,
   };

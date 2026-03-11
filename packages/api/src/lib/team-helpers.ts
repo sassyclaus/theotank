@@ -2,6 +2,7 @@ import { getDb } from "@theotank/rds/db";
 import { teamMemberships, teamSnapshots, theologians } from "@theotank/rds/schema";
 import { eq, asc } from "drizzle-orm";
 import { colorForTradition } from "./tradition-colors";
+import { publicAssetUrlVersioned } from "./s3";
 
 /** Drizzle transaction type (inferred from getDb().transaction callback) */
 export type Tx = Parameters<
@@ -14,6 +15,8 @@ export function shapeMember(row: {
   slug: string;
   initials: string | null;
   tradition: string | null;
+  imageKey: string | null;
+  updatedAt: Date;
 }) {
   return {
     theologianId: row.theologianId,
@@ -22,6 +25,7 @@ export function shapeMember(row: {
     initials: row.initials,
     tradition: row.tradition,
     color: colorForTradition(row.tradition),
+    imageUrl: row.imageKey ? publicAssetUrlVersioned(row.imageKey, row.updatedAt) : null,
   };
 }
 

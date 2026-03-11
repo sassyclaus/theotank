@@ -3,7 +3,7 @@ import { getDb } from "@theotank/rds/db";
 import { theologians } from "@theotank/rds/schema";
 import { eq, inArray, or } from "drizzle-orm";
 import { colorForTradition } from "../lib/tradition-colors";
-import { publicAssetUrl } from "../lib/s3";
+import { publicAssetUrlVersioned } from "../lib/s3";
 import type { AppEnv } from "../lib/types";
 
 const CORPUS_META: Record<string, { corpusName: string; description: string }> = {
@@ -49,7 +49,7 @@ app.get("/corpora", async (c) => {
         corpusName: meta?.corpusName ?? `${row.name} Corpus`,
         description: meta?.description ?? row.tagline ?? "",
         available: row.hasResearch,
-        imageUrl: row.imageKey ? publicAssetUrl(row.imageKey) : null,
+        imageUrl: row.imageKey ? publicAssetUrlVersioned(row.imageKey, row.updatedAt) : null,
       };
     })
     .sort((a, b) => {

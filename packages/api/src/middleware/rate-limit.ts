@@ -65,12 +65,15 @@ function getClientKey(c: {
   return "ip:unknown";
 }
 
+let instanceCounter = 0;
+
 export function rateLimiter(opts: {
   windowMs: number;
   max: number;
 }) {
+  const prefix = `rl${instanceCounter++}:`;
   return createMiddleware<AppEnv>(async (c, next) => {
-    const key = getClientKey(c);
+    const key = prefix + getClientKey(c);
     const now = Date.now();
     const windowStart = now - opts.windowMs;
 

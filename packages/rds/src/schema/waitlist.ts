@@ -5,6 +5,7 @@ import {
   boolean,
   integer,
   timestamp,
+  jsonb,
   index,
 } from "drizzle-orm/pg-core";
 
@@ -14,8 +15,7 @@ export const waitlistSignups = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     email: text("email").notNull().unique(),
     emailConfirmed: boolean("email_confirmed").default(false).notNull(),
-    toolInterest: text("tool_interest"),
-    persona: text("persona"),
+    surveyResponses: jsonb("survey_responses").$type<Record<string, string | string[]>>(),
     referralCode: text("referral_code").notNull().unique(),
     referredBy: text("referred_by"),
     referralCount: integer("referral_count").default(0).notNull(),

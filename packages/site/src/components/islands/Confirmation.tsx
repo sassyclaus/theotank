@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import ShareButtons from "./ShareButtons";
-import { submitFirstQuestion } from "@/lib/api";
+import { submitSurveyResponses } from "@/lib/api";
 
 interface ConfirmationProps {
   queuePosition: number;
@@ -23,7 +23,7 @@ export default function Confirmation({ queuePosition, referralCode }: Confirmati
 
     setSubmitting(true);
     try {
-      await submitFirstQuestion(referralCode, question.trim());
+      await submitSurveyResponses(referralCode, { firstQuestion: question.trim() });
       setQuestionSubmitted(true);
     } catch {
       // Silently fail — non-critical

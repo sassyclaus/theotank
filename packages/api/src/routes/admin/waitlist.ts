@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { getDb } from "@theotank/rds/db";
 import { waitlistSignups } from "@theotank/rds/schema";
-import { eq, desc, asc, sql, and, like, isNotNull } from "drizzle-orm";
+import { eq, desc, asc, sql, and, like } from "drizzle-orm";
 import type { AppEnv } from "../../lib/types";
 
 const app = new Hono<AppEnv>();
@@ -10,8 +10,8 @@ const app = new Hono<AppEnv>();
 app.get("/", async (c) => {
   const db = getDb();
   const search = c.req.query("search");
-  const persona = c.req.query("persona");
-  const toolInterest = c.req.query("toolInterest");
+  const surveyKey = c.req.query("surveyKey");
+  const surveyValue = c.req.query("surveyValue");
   const emailConfirmed = c.req.query("emailConfirmed");
   const limit = Math.min(parseInt(c.req.query("limit") ?? "50", 10), 200);
   const offset = parseInt(c.req.query("offset") ?? "0", 10);
@@ -22,9 +22,8 @@ app.get("/", async (c) => {
   // Build filter conditions
   const conditions = [];
   if (search) conditions.push(like(waitlistSignups.email, `%${search}%`));
-  if (persona) conditions.push(eq(waitlistSignups.persona, persona));
-  if (toolInterest)
-    conditions.push(eq(waitlistSignups.toolInterest, toolInterest));
+  if (surveyKey && surveyValue)
+    conditions.push(sql`${waitlistSignups.surveyResponses}->>${surveyKey} = ${surveyValue}`);
   if (emailConfirmed === "true")
     conditions.push(eq(waitlistSignups.emailConfirmed, true));
   if (emailConfirmed === "false")
@@ -58,37 +57,22 @@ app.get("/", async (c) => {
         sql<number>`count(*) filter (where ${waitlistSignups.firstQuestion} is not null)`.mapWith(
           Number,
         ),
+      withSurvey:
+        sql<number>`count(*) filter (where ${waitlistSignups.surveyResponses} is not null)`.mapWith(
+          Number,
+        ),
     })
     .from(waitlistSignups);
 
-  // Persona breakdown
-  const personaRows = await db
-    .select({
-      persona: waitlistSignups.persona,
-      count: sql<number>`count(*)`.mapWith(Number),
-    })
-    .from(waitlistSignups)
-    .where(isNotNull(waitlistSignups.persona))
-    .groupBy(waitlistSignups.persona);
+  // Survey breakdown via jsonb_each_text
+  const surveyRows = await db.execute(
+    sql`select key, value, count(*)::int as count from ${waitlistSignups}, jsonb_each_text(${waitlistSignups.surveyResponses}) group by key, value`,
+  ) as unknown as Array<{ key: string; value: string; count: number }>;
 
-  const byPersona: Record<string, number> = {};
-  for (const row of personaRows) {
-    if (row.persona) byPersona[row.persona] = row.count;
-  }
-
-  // Tool interest breakdown
-  const toolRows = await db
-    .select({
-      toolInterest: waitlistSignups.toolInterest,
-      count: sql<number>`count(*)`.mapWith(Number),
-    })
-    .from(waitlistSignups)
-    .where(isNotNull(waitlistSignups.toolInterest))
-    .groupBy(waitlistSignups.toolInterest);
-
-  const byToolInterest: Record<string, number> = {};
-  for (const row of toolRows) {
-    if (row.toolInterest) byToolInterest[row.toolInterest] = row.count;
+  const bySurvey: Record<string, Record<string, number>> = {};
+  for (const row of surveyRows) {
+    if (!bySurvey[row.key]) bySurvey[row.key] = {};
+    bySurvey[row.key][row.value] = row.count;
   }
 
   // Count with filters for pagination
@@ -120,8 +104,7 @@ app.get("/", async (c) => {
   return c.json({
     stats: {
       ...stats,
-      byPersona,
-      byToolInterest,
+      bySurvey,
     },
     signups,
     total,

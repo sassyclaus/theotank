@@ -1,6 +1,8 @@
+import { useMemo } from "react";
 import { useParams, Link } from "react-router";
 import { useAuth } from "@clerk/clerk-react";
 import { useResult, useResultContent, useResultProgress, useUpdateVisibility } from "@/hooks/useResults";
+import { useTheologians } from "@/hooks/useTheologians";
 import { ReportHeader } from "@/components/results/ReportHeader";
 import { AskResultBody } from "@/components/results/AskResultBody";
 import { PollResultBody } from "@/components/results/PollResultBody";
@@ -18,6 +20,18 @@ export default function Result() {
   const { id } = useParams<{ id: string }>();
   const { userId } = useAuth();
   const visibilityMutation = useUpdateVisibility();
+
+  // Build name→imageUrl map from theologian list
+  const { data: allTheologians } = useTheologians();
+  const portraitMap = useMemo(() => {
+    const map = new Map<string, string | null>();
+    if (allTheologians) {
+      for (const t of allTheologians) {
+        map.set(t.name, t.imageUrl);
+      }
+    }
+    return map;
+  }, [allTheologians]);
 
   // Try API first
   const isActive = (status?: string) =>
@@ -110,7 +124,7 @@ export default function Result() {
 
       if (apiResult.toolType === "poll") {
         const pollContent = content as PollContentResponse;
-        const mapped = mapPollContent(apiResult, pollContent, dateStr);
+        const mapped = mapPollContent(apiResult, pollContent, dateStr, portraitMap);
 
         return (
           <div className="mx-auto max-w-4xl px-4 py-12 lg:px-8">
@@ -123,7 +137,7 @@ export default function Result() {
 
       if (apiResult.toolType === "super_poll") {
         const pollContent = content as PollContentResponse;
-        const mapped = mapPollContent(apiResult, pollContent, dateStr);
+        const mapped = mapPollContent(apiResult, pollContent, dateStr, portraitMap);
         mapped.team = apiResult.teamName ?? "All Platform Theologians";
 
         return (
@@ -147,7 +161,7 @@ export default function Result() {
           grade: reviewContent.overallGrade,
           summary: reviewContent.summary,
           reactions: reviewContent.grades.map((g) => ({
-            theologian: g.theologian,
+            theologian: { ...g.theologian, imageUrl: portraitMap.get(g.theologian.name) ?? null },
             grade: g.grade,
             assessment: g.reaction,
             strengths: g.strengths,
@@ -222,7 +236,7 @@ export default function Result() {
         date: dateStr,
         summary: askContent.synthesis.comparison,
         perspectives: askContent.perspectives.map((p) => ({
-          theologian: p.theologian,
+          theologian: { ...p.theologian, imageUrl: portraitMap.get(p.theologian.name) ?? null },
           perspective: p.perspective,
           reaction: p.reaction ?? null,
         })),
@@ -324,6 +338,7 @@ function mapPollContent(
   apiResult: { id: string; title: string; teamName: string | null; createdAt: string },
   pollContent: PollContentResponse,
   dateStr: string,
+  portraitMap?: Map<string, string | null>,
 ): PollResult {
   const { optionLabels, theologianSelections } = pollContent;
   const totalPolled = theologianSelections.length;
@@ -382,6 +397,7 @@ function mapPollContent(
         dates: s.theologian.dates,
         tradition: s.theologian.tradition,
         color: s.theologian.color,
+        imageUrl: portraitMap?.get(s.theologian.name) ?? null,
       },
       selection: s.selection,
       justification: s.justification,

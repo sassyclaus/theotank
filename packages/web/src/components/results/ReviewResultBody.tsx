@@ -152,12 +152,16 @@ function ReviewTheologianHeader({
 }) {
   return (
     <div className="flex items-center gap-3">
-      <div
-        className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white"
-        style={{ backgroundColor: theologian.color }}
-      >
-        {theologian.initials}
-      </div>
+      {theologian.imageUrl ? (
+        <img src={theologian.imageUrl} alt={theologian.name} className="h-14 w-14 shrink-0 rounded-full object-cover" />
+      ) : (
+        <div
+          className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white"
+          style={{ backgroundColor: theologian.color }}
+        >
+          {theologian.initials}
+        </div>
+      )}
       <div className="min-w-0 flex-1">
         <h3 className="font-serif text-lg font-semibold">{theologian.name}</h3>
         <div className="flex items-center gap-2 text-sm text-text-secondary">

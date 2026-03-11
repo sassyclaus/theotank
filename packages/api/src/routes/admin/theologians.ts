@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { getDb } from "@theotank/rds/db";
 import { theologians } from "@theotank/rds/schema";
 import { eq, asc } from "drizzle-orm";
-import { presignPublicPutUrl, publicAssetUrl } from "../../lib/s3";
+import { presignPublicPutUrl, publicAssetUrlVersioned } from "../../lib/s3";
 import type { AppEnv } from "../../lib/types";
 
 const app = new Hono<AppEnv>();
@@ -52,7 +52,7 @@ function shapeAdmin(row: TheologianRow) {
     voiceStyle: row.voiceStyle,
     keyWorks: row.keyWorks,
     imageKey: row.imageKey,
-    imageUrl: row.imageKey ? publicAssetUrl(row.imageKey) : null,
+    imageUrl: row.imageKey ? publicAssetUrlVersioned(row.imageKey, row.updatedAt) : null,
     hasResearch: row.hasResearch,
     profileCompleteness: profileCompleteness(row),
     createdAt: row.createdAt.toISOString(),

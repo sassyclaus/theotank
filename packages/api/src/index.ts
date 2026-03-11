@@ -48,8 +48,7 @@ app.onError((err, c) => {
 // Health check (unauthenticated)
 app.get("/health", (c) => c.json({ ok: true }));
 
-// Rate limiting — more specific paths first
-app.use("/public/waitlist", rateLimiter({ windowMs: 60_000, max: 5 }));
+// Rate limiting — signup has its own inline 5/min limiter in the route file
 app.use("/public/*", rateLimiter({ windowMs: 60_000, max: 30 }));
 app.use("*", rateLimiter({ windowMs: 60_000, max: 100 }));
 

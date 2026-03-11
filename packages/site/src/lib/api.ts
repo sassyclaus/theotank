@@ -2,8 +2,6 @@ const API_BASE = import.meta.env.PUBLIC_API_URL || "http://localhost:3001";
 
 export async function submitWaitlistSignup(data: {
   email: string;
-  toolInterest?: string;
-  persona?: string;
   referredBy?: string;
   utmSource?: string;
   utmMedium?: string;
@@ -30,18 +28,18 @@ export async function getWaitlistCount(): Promise<number> {
   return data.count ?? 0;
 }
 
-export async function submitFirstQuestion(
+export async function submitSurveyResponses(
   referralCode: string,
-  question: string,
+  responses: Record<string, string | string[]>,
 ): Promise<void> {
-  const res = await fetch(`${API_BASE}/public/waitlist/${referralCode}/question`, {
+  const res = await fetch(`${API_BASE}/public/waitlist/${referralCode}/survey`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ question }),
+    body: JSON.stringify({ responses }),
   });
 
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: "Failed to submit question" }));
-    throw new Error(err.error || "Failed to submit question");
+    const err = await res.json().catch(() => ({ error: "Failed to submit survey" }));
+    throw new Error(err.error || "Failed to submit survey");
   }
 }

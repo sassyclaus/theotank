@@ -405,8 +405,8 @@ export async function adminListWaitlist(
 ): Promise<WaitlistListResponse> {
   const query = new URLSearchParams();
   if (params?.search) query.set("search", params.search);
-  if (params?.persona) query.set("persona", params.persona);
-  if (params?.toolInterest) query.set("toolInterest", params.toolInterest);
+  if (params?.surveyKey) query.set("surveyKey", params.surveyKey);
+  if (params?.surveyValue) query.set("surveyValue", params.surveyValue);
   if (params?.emailConfirmed) query.set("emailConfirmed", params.emailConfirmed);
   if (params?.limit) query.set("limit", String(params.limit));
   if (params?.offset) query.set("offset", String(params.offset));

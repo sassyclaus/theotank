@@ -6,6 +6,7 @@ import { randomBytes, createHash } from "crypto";
 import type { AppEnv } from "../../lib/types";
 import { config } from "../../config";
 import { sendWaitlistConfirmEmail } from "../../lib/email";
+import { rateLimiter } from "../../middleware/rate-limit";
 
 const app = new Hono<AppEnv>();
 
@@ -22,12 +23,10 @@ function verifyConfirmToken(email: string, token: string): boolean {
   return generateConfirmToken(email) === token;
 }
 
-// POST /public/waitlist — Submit signup
-app.post("/", async (c) => {
+// POST /public/waitlist — Submit signup (5 req/min per IP)
+app.post("/", rateLimiter({ windowMs: 60_000, max: 5 }), async (c) => {
   const body = await c.req.json<{
     email: string;
-    toolInterest?: string;
-    persona?: string;
     referredBy?: string;
     utmSource?: string;
     utmMedium?: string;
@@ -79,13 +78,8 @@ app.post("/", async (c) => {
     }
   }
 
-  const validTools = ["ask", "poll", "review", "research"];
-  const validPersonas = ["creator", "pastor", "student", "enthusiast"];
-
   await db.insert(waitlistSignups).values({
     email,
-    toolInterest: body.toolInterest && validTools.includes(body.toolInterest) ? body.toolInterest : null,
-    persona: body.persona && validPersonas.includes(body.persona) ? body.persona : null,
     referralCode,
     referredBy: body.referredBy || null,
     queuePosition,
@@ -138,23 +132,34 @@ app.get("/count", async (c) => {
   return c.json({ count: total });
 });
 
-// POST /public/waitlist/:code/question — Submit first question
-app.post("/:code/question", async (c) => {
+// POST /public/waitlist/:code/survey — Submit survey responses
+app.post("/:code/survey", async (c) => {
   const code = c.req.param("code");
-  const body = await c.req.json<{ question: string }>();
+  const body = await c.req.json<{ responses: Record<string, string | string[]> }>();
 
-  if (!body.question || body.question.trim().length === 0) {
-    return c.json({ error: "Question is required" }, 400);
+  if (!body.responses || typeof body.responses !== "object") {
+    return c.json({ error: "Responses object is required" }, 400);
   }
 
-  if (body.question.trim().length > 500) {
-    return c.json({ error: "Question must be under 500 characters" }, 400);
+  const keys = Object.keys(body.responses);
+  if (keys.length > 20) {
+    return c.json({ error: "Too many response keys (max 20)" }, 400);
+  }
+
+  for (const key of keys) {
+    const val = body.responses[key];
+    if (typeof val === "string" && val.length > 500) {
+      return c.json({ error: `Value for "${key}" exceeds 500 characters` }, 400);
+    }
+    if (Array.isArray(val) && val.some((v) => typeof v !== "string" || v.length > 500)) {
+      return c.json({ error: `Invalid array value for "${key}"` }, 400);
+    }
   }
 
   const db = getDb();
   const result = await db
     .update(waitlistSignups)
-    .set({ firstQuestion: body.question.trim() })
+    .set({ surveyResponses: body.responses })
     .where(eq(waitlistSignups.referralCode, code))
     .returning({ id: waitlistSignups.id });
 

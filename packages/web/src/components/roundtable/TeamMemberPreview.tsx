@@ -29,9 +29,13 @@ export function TeamMemberPreview({ members, totalCount }: TeamMemberPreviewProp
             to={`/theologians/${m.slug}`}
             title={m.name}
             className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white transition-transform hover:scale-110"
-            style={{ backgroundColor: m.color }}
+            style={m.imageUrl ? undefined : { backgroundColor: m.color }}
           >
-            {m.initials}
+            {m.imageUrl ? (
+              <img src={m.imageUrl} alt={m.name} className="h-6 w-6 rounded-full object-cover" />
+            ) : (
+              m.initials
+            )}
           </Link>
         ))}
         {remaining > 0 && (
@@ -69,12 +73,16 @@ export function TeamMemberPreview({ members, totalCount }: TeamMemberPreviewProp
               to={`/theologians/${m.slug}`}
               className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-colors hover:bg-surface"
             >
-              <span
-                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white"
-                style={{ backgroundColor: m.color }}
-              >
-                {m.initials}
-              </span>
+              {m.imageUrl ? (
+                <img src={m.imageUrl} alt={m.name} className="h-6 w-6 shrink-0 rounded-full object-cover" />
+              ) : (
+                <span
+                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white"
+                  style={{ backgroundColor: m.color }}
+                >
+                  {m.initials}
+                </span>
+              )}
               <span className="truncate text-xs text-text-primary">{m.name}</span>
             </Link>
           ))}
