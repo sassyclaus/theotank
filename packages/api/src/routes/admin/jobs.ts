@@ -1,6 +1,5 @@
 import { Hono } from "hono";
-import { getDb } from "@theotank/rds";
-import { sql } from "kysely";
+import { getDb, sql } from "@theotank/rds";
 import type { AppEnv } from "../../lib/types";
 
 const app = new Hono<AppEnv>();

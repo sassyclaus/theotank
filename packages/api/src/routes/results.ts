@@ -1,6 +1,5 @@
 import { Hono } from "hono";
-import { getDb } from "@theotank/rds";
-import { sql } from "kysely";
+import { getDb, sql } from "@theotank/rds";
 import { presignGetUrl } from "../lib/s3";
 import { createSnapshot } from "../lib/team-helpers";
 import { checkAndRecordUsage, UsageLimitError } from "../lib/usage-limits";

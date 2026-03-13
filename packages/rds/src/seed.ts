@@ -1,5 +1,5 @@
-import { getDb, closeDb } from "./db";
-import { theologians, teams, teamMemberships, resultTypes } from "./schema";
+import { getDb, closeDb } from "./kysely-db";
+import type { TheologianEra, TheologianTradition, ResultToolType } from "./kysely-types";
 import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -23,21 +23,77 @@ function loadJson<T>(filename: string): T[] {
   return JSON.parse(readFileSync(path, "utf-8"), reviveDates);
 }
 
+interface TheologianSeed {
+  id: string;
+  slug: string;
+  name: string;
+  initials: string | null;
+  tagline: string | null;
+  bio: string | null;
+  born: number | null;
+  died: number | null;
+  era: TheologianEra | null;
+  tradition: TheologianTradition | null;
+  languagePrimary: string | null;
+  voiceStyle: string | null;
+  keyWorks: string[];
+  hasResearch: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface TeamSeed {
+  id: string;
+  name: string;
+  description: string | null;
+  isNative: boolean;
+  updatedAt: Date;
+}
+
+interface MembershipSeed {
+  teamId: string;
+  theologianId: string;
+}
+
+interface ResultTypeSeed {
+  kind: ResultToolType;
+  version: number;
+  description: string;
+  contentSchema: unknown;
+  previewSchema: unknown;
+  inputSchema: unknown;
+  isActive: boolean;
+}
+
 async function main() {
   const db = getDb();
 
   // Theologians — upsert on slug
-  const theologianRows = loadJson<typeof theologians.$inferInsert>(
-    "theologians.json",
-  );
+  const theologianRows = loadJson<TheologianSeed>("theologians.json");
   if (theologianRows.length > 0) {
     for (const row of theologianRows) {
       await db
-        .insert(theologians)
-        .values(row)
-        .onConflictDoUpdate({
-          target: theologians.slug,
-          set: {
+        .insertInto("theologians")
+        .values({
+          id: row.id,
+          slug: row.slug,
+          name: row.name,
+          initials: row.initials,
+          tagline: row.tagline,
+          bio: row.bio,
+          born: row.born,
+          died: row.died,
+          era: row.era,
+          tradition: row.tradition,
+          language_primary: row.languagePrimary,
+          voice_style: row.voiceStyle,
+          key_works: row.keyWorks,
+          has_research: row.hasResearch,
+          created_at: row.createdAt,
+          updated_at: row.updatedAt,
+        })
+        .onConflict((oc) =>
+          oc.column("slug").doUpdateSet({
             name: row.name,
             initials: row.initials,
             tagline: row.tagline,
@@ -46,70 +102,87 @@ async function main() {
             died: row.died,
             era: row.era,
             tradition: row.tradition,
-            languagePrimary: row.languagePrimary,
-            voiceStyle: row.voiceStyle,
-            keyWorks: row.keyWorks,
-            hasResearch: row.hasResearch,
-            updatedAt: row.updatedAt,
-          },
-        });
+            language_primary: row.languagePrimary,
+            voice_style: row.voiceStyle,
+            key_works: row.keyWorks,
+            has_research: row.hasResearch,
+            updated_at: row.updatedAt,
+          }),
+        )
+        .execute();
     }
     console.log(`Upserted ${theologianRows.length} theologians`);
   }
 
-  // Teams — upsert native teams on name
-  const teamRows = loadJson<typeof teams.$inferInsert>("teams.json");
+  // Teams — upsert native teams on id
+  const teamRows = loadJson<TeamSeed>("teams.json");
   if (teamRows.length > 0) {
     for (const row of teamRows) {
       await db
-        .insert(teams)
-        .values(row)
-        .onConflictDoUpdate({
-          target: teams.id,
-          set: {
+        .insertInto("teams")
+        .values({
+          id: row.id,
+          name: row.name,
+          description: row.description,
+          is_native: row.isNative,
+          updated_at: row.updatedAt,
+        })
+        .onConflict((oc) =>
+          oc.column("id").doUpdateSet({
             name: row.name,
             description: row.description,
-            isNative: row.isNative,
-            updatedAt: row.updatedAt,
-          },
-        });
+            is_native: row.isNative,
+            updated_at: row.updatedAt,
+          }),
+        )
+        .execute();
     }
     console.log(`Upserted ${teamRows.length} teams`);
   }
 
   // Team memberships — upsert on composite PK
-  const membershipRows = loadJson<typeof teamMemberships.$inferInsert>(
-    "team-memberships.json",
-  );
+  const membershipRows = loadJson<MembershipSeed>("team-memberships.json");
   if (membershipRows.length > 0) {
     for (const row of membershipRows) {
       await db
-        .insert(teamMemberships)
-        .values(row)
-        .onConflictDoNothing();
+        .insertInto("team_memberships")
+        .values({
+          team_id: row.teamId,
+          theologian_id: row.theologianId,
+        })
+        .onConflict((oc) =>
+          oc.columns(["team_id", "theologian_id"]).doNothing(),
+        )
+        .execute();
     }
     console.log(`Upserted ${membershipRows.length} team memberships`);
   }
 
   // Result types — upsert on (kind, version)
-  const resultTypeRows = loadJson<typeof resultTypes.$inferInsert>(
-    "result-types.json",
-  );
+  const resultTypeRows = loadJson<ResultTypeSeed>("result-types.json");
   if (resultTypeRows.length > 0) {
     for (const row of resultTypeRows) {
       await db
-        .insert(resultTypes)
-        .values(row)
-        .onConflictDoUpdate({
-          target: [resultTypes.kind, resultTypes.version],
-          set: {
+        .insertInto("result_types")
+        .values({
+          kind: row.kind,
+          version: row.version,
+          description: row.description,
+          content_schema: JSON.stringify(row.contentSchema),
+          preview_schema: JSON.stringify(row.previewSchema),
+          input_schema: JSON.stringify(row.inputSchema),
+          is_active: row.isActive,
+        })
+        .onConflict((oc) =>
+          oc.columns(["kind", "version"]).doUpdateSet({
             description: row.description,
-            contentSchema: row.contentSchema,
-            previewSchema: row.previewSchema,
-            inputSchema: row.inputSchema,
-            isActive: row.isActive,
-          },
-        });
+            content_schema: JSON.stringify(row.contentSchema),
+            preview_schema: JSON.stringify(row.previewSchema),
+            input_schema: JSON.stringify(row.inputSchema),
+            is_active: row.isActive,
+          }),
+        )
+        .execute();
     }
     console.log(`Upserted ${resultTypeRows.length} result types`);
   }

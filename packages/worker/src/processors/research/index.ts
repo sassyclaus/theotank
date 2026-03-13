@@ -1,6 +1,5 @@
 import { getDb } from "@theotank/rds";
-import type { Selectable } from "kysely";
-import type { Jobs } from "@theotank/rds";
+import type { Selectable, Jobs } from "@theotank/rds";
 
 type Job = Selectable<Jobs>;
 import { logProgress } from "../../progress";
@@ -21,7 +20,7 @@ import { buildCitations, uploadResearchContent } from "./build-content";
 export const processResearch = withResultContext("research", async (job: Job, ctx: ResultContext) => {
   const { result, algoConfig: rawConfig, log } = ctx;
   const db = getDb();
-  const payload = job.payload as ResearchJobPayload;
+  const payload = job.payload as unknown as ResearchJobPayload;
   const { resultId } = payload;
 
   const algoConfig = rawConfig as ResearchAlgoConfig;

@@ -1,6 +1,5 @@
 import { Hono } from "hono";
-import { getDb } from "@theotank/rds";
-import { sql } from "kysely";
+import { getDb, sql } from "@theotank/rds";
 import type { AppEnv } from "../../lib/types";
 
 const app = new Hono<AppEnv>();
@@ -54,7 +53,7 @@ app.get("/", async (c) => {
 
   if (search) countQuery = countQuery.where("email", "ilike", `%${search}%`);
   if (surveyKey && surveyValue)
-    countQuery = countQuery.where(sql`survey_responses->>${surveyKey} = ${surveyValue}`);
+    countQuery = countQuery.where(sql<boolean>`survey_responses->>${surveyKey} = ${surveyValue}`);
   if (emailConfirmed === "true")
     countQuery = countQuery.where("email_confirmed", "=", true);
   if (emailConfirmed === "false")
@@ -73,7 +72,7 @@ app.get("/", async (c) => {
 
   if (search) rowsQuery = rowsQuery.where("email", "ilike", `%${search}%`);
   if (surveyKey && surveyValue)
-    rowsQuery = rowsQuery.where(sql`survey_responses->>${surveyKey} = ${surveyValue}`);
+    rowsQuery = rowsQuery.where(sql<boolean>`survey_responses->>${surveyKey} = ${surveyValue}`);
   if (emailConfirmed === "true")
     rowsQuery = rowsQuery.where("email_confirmed", "=", true);
   if (emailConfirmed === "false")

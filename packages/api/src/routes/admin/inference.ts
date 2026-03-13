@@ -1,6 +1,5 @@
 import { Hono } from "hono";
-import { getDb } from "@theotank/rds";
-import { sql } from "kysely";
+import { getDb, sql } from "@theotank/rds";
 import { estimateCost, MODEL_PRICING, WHISPER_COST_PER_MINUTE, costCaseExpression } from "../../lib/model-pricing";
 import type { AppEnv } from "../../lib/types";
 
@@ -217,7 +216,7 @@ app.get("/results", async (c) => {
       sql<number>`SUM(${sql.raw(costExpr)})`.as("estimated_cost"),
     ])
     .where("created_at", ">=", windowStart)
-    .where(sql`attribution->>'result_id' IS NOT NULL`)
+    .where(sql<boolean>`attribution->>'result_id' IS NOT NULL`)
     .groupBy(sql`attribution->>'result_id'`)
     .as("result_costs");
 

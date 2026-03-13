@@ -1,5 +1,4 @@
-import { getDb } from "@theotank/rds";
-import { sql } from "kysely";
+import { getDb, sql } from "@theotank/rds";
 
 /**
  * Convert a JS string array to a Postgres array literal: {val1,val2,...}

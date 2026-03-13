@@ -1,7 +1,5 @@
-import { getDb } from "@theotank/rds";
-import { sql } from "kysely";
-import type { Kysely } from "kysely";
-import type { DB } from "@theotank/rds";
+import { getDb, sql } from "@theotank/rds";
+import type { Kysely, DB } from "@theotank/rds";
 import { getTierConfig } from "./tier-config";
 
 export class UsageLimitError extends Error {

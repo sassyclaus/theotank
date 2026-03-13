@@ -96,13 +96,13 @@ app.post("/", async (c) => {
       .selectFrom("team_memberships")
       .innerJoin("theologians", "theologians.id", "team_memberships.theologian_id")
       .select([
-        "theologians.id as theologianId",
+        "theologians.id as theologian_id",
         "theologians.name",
         "theologians.slug",
         "theologians.initials",
         "theologians.tradition",
-        "theologians.image_key as imageKey",
-        "theologians.updated_at as updatedAt",
+        "theologians.image_key",
+        "theologians.updated_at",
       ])
       .where("team_memberships.team_id", "=", team.id)
       .orderBy("theologians.name", "asc")
@@ -253,13 +253,13 @@ app.put("/:id", async (c) => {
       .selectFrom("team_memberships")
       .innerJoin("theologians", "theologians.id", "team_memberships.theologian_id")
       .select([
-        "theologians.id as theologianId",
+        "theologians.id as theologian_id",
         "theologians.name",
         "theologians.slug",
         "theologians.initials",
         "theologians.tradition",
-        "theologians.image_key as imageKey",
-        "theologians.updated_at as updatedAt",
+        "theologians.image_key",
+        "theologians.updated_at",
       ])
       .where("team_memberships.team_id", "=", teamId)
       .orderBy("theologians.name", "asc")

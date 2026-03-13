@@ -1,6 +1,5 @@
 import { getDb } from "@theotank/rds";
-import type { Selectable } from "kysely";
-import type { Jobs } from "@theotank/rds";
+import type { Selectable, Jobs } from "@theotank/rds";
 
 type Job = Selectable<Jobs>;
 import type { Logger } from "../lib/logger";
@@ -27,7 +26,7 @@ async function failFile(fileId: string, message: string): Promise<void> {
 
 export async function processReviewFile(job: Job, log: Logger): Promise<void> {
   const db = getDb();
-  const payload = job.payload as ReviewFileJobPayload;
+  const payload = job.payload as unknown as ReviewFileJobPayload;
   const { reviewFileId } = payload;
 
   log = log.child({ reviewFileId });

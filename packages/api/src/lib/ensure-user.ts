@@ -1,6 +1,5 @@
 import { getDb } from "@theotank/rds";
-import type { Selectable } from "kysely";
-import type { Users } from "@theotank/rds";
+import type { Selectable, Users } from "@theotank/rds";
 
 export type User = Selectable<Users>;
 

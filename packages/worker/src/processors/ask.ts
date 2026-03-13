@@ -1,6 +1,5 @@
 import { getDb } from "@theotank/rds";
-import type { Selectable } from "kysely";
-import type { Jobs } from "@theotank/rds";
+import type { Selectable, Jobs } from "@theotank/rds";
 
 type Job = Selectable<Jobs>;
 import { ai } from "../lib/openai";
@@ -38,7 +37,7 @@ import type {
 export const processAsk = withResultContext("ask", async (job: Job, ctx: ResultContext) => {
   const { result, algoConfig: rawConfig, log } = ctx;
   const db = getDb();
-  const payload = job.payload as AskJobPayload;
+  const payload = job.payload as unknown as AskJobPayload;
   const { resultId } = payload;
 
   const attribution = {
@@ -78,12 +77,12 @@ export const processAsk = withResultContext("ask", async (job: Job, ctx: ResultC
         .selectFrom('theologians')
         .selectAll()
         .where('id', '=', m.theologianId)
-        .executeTakeFirst();
+        .executeTakeFirstOrThrow();
       return t;
     })
   );
 
-  const validTheologians = theologianRows.filter(Boolean);
+  const validTheologians = theologianRows;
   if (validTheologians.length === 0) {
     await failBoth(resultId, job.id, "No valid theologians found in team");
     return;

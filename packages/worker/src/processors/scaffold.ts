@@ -1,6 +1,5 @@
 import { getDb } from "@theotank/rds";
-import type { Selectable } from "kysely";
-import type { Jobs, Results } from "@theotank/rds";
+import type { Selectable, Jobs, Results } from "@theotank/rds";
 import type { Logger } from "../lib/logger";
 import { ai } from "../lib/openai";
 import { sendResultCompletedEmail, getEmailFromClerk } from "../lib/email";

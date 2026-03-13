@@ -1,5 +1,4 @@
-import { getDb } from "@theotank/rds";
-import { sql } from "kysely";
+import { getDb, sql } from "@theotank/rds";
 import type { CronJob } from "./types";
 
 export const jobCleanup: CronJob = {

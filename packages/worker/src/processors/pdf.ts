@@ -1,6 +1,5 @@
 import { getDb } from "@theotank/rds";
-import type { Selectable } from "kysely";
-import type { Jobs } from "@theotank/rds";
+import type { Selectable, Jobs } from "@theotank/rds";
 
 type Job = Selectable<Jobs>;
 import type { Logger } from "../lib/logger";
@@ -13,7 +12,7 @@ interface PdfJobPayload {
 
 export async function processPdf(job: Job, log: Logger): Promise<void> {
   const db = getDb();
-  const payload = job.payload as PdfJobPayload;
+  const payload = job.payload as unknown as PdfJobPayload;
   const { resultId } = payload;
 
   log = log.child({ resultId });

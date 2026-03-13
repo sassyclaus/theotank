@@ -1,5 +1,4 @@
-import type { Selectable } from "kysely";
-import type { Jobs } from "@theotank/rds";
+import type { Selectable, Jobs } from "@theotank/rds";
 import { completeJob, failJob } from "../queue";
 import { logger, type Logger } from "../lib/logger";
 import { processAsk } from "./ask";

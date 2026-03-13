@@ -1,6 +1,5 @@
 import { Hono } from "hono";
-import { getDb } from "@theotank/rds";
-import { sql } from "kysely";
+import { getDb, sql } from "@theotank/rds";
 import { randomBytes, createHash } from "crypto";
 import type { AppEnv } from "../../lib/types";
 import { config } from "../../config";

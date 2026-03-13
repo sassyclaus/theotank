@@ -9,6 +9,6 @@ export async function logProgress(
   await db.insertInto('result_progress_logs').values({
     result_id: resultId,
     message,
-    metadata: metadata ?? null,
+    metadata: metadata ? JSON.stringify(metadata) : null,
   }).execute();
 }

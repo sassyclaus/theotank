@@ -1,6 +1,5 @@
 import { getDb, sql } from "@theotank/rds";
-import type { Selectable } from "kysely";
-import type { Jobs } from "@theotank/rds";
+import type { Selectable, Jobs } from "@theotank/rds";
 import { config } from "./config";
 import { logger } from "./lib/logger";
 
