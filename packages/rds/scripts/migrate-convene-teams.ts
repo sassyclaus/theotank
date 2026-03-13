@@ -10,11 +10,9 @@
  */
 
 import postgres from "postgres";
-import { drizzle } from "drizzle-orm/postgres-js";
-import { eq, sql } from "drizzle-orm";
-import { theologians } from "../src/schema/theologians";
-import { teams, teamMemberships } from "../src/schema/teams";
-import type { NewTeam, NewTeamMembership } from "../src/schema/teams";
+import { Kysely } from "kysely";
+import { PostgresJSDialect } from "kysely-postgres-js";
+import type { DB } from "../src/kysely-types";
 
 // ── connections ──────────────────────────────────────────────────────────────
 
@@ -27,7 +25,9 @@ const theotankUrl =
 
 const conveneClient = postgres(conveneUrl);
 const theotankClient = postgres(theotankUrl);
-const db = drizzle(theotankClient);
+const db = new Kysely<DB>({
+  dialect: new PostgresJSDialect({ postgres: theotankClient }),
+});
 
 // ── types ────────────────────────────────────────────────────────────────────
 
@@ -76,14 +76,15 @@ async function main() {
   // 3. Build slug → theologian ID map from theotank
   console.log("Building theologian slug → ID map…");
   const theologianRows = await db
-    .select({ id: theologians.id, slug: theologians.slug })
-    .from(theologians);
+    .selectFrom('theologians')
+    .select(['id', 'slug'])
+    .execute();
   const slugToId = new Map(theologianRows.map((t) => [t.slug, t.id]));
   console.log(`  ${slugToId.size} theologians in theotank`);
 
   // 4. Delete existing native teams (cascade handles memberships)
   console.log("Deleting existing native teams from theotank…");
-  const deleted = await db.delete(teams).where(eq(teams.isNative, true));
+  await db.deleteFrom('teams').where('is_native', '=', true).execute();
   console.log(`  Deleted existing native teams`);
 
   // 5. Insert native teams
@@ -91,16 +92,16 @@ async function main() {
   const conveneIdToNewId = new Map<string, string>();
 
   for (const ct of conveneTeams) {
-    const row: NewTeam = {
+    const row = {
       name: ct.name,
       description: ct.description,
-      isNative: true,
-      createdAt: ct.created_at,
-      updatedAt: ct.updated_at,
+      is_native: true,
+      created_at: ct.created_at,
+      updated_at: ct.updated_at,
     };
-    const [inserted] = await db.insert(teams).values(row).returning({ id: teams.id });
-    conveneIdToNewId.set(ct.id, inserted.id);
-    console.log(`  ✓ ${ct.name} → ${inserted.id}`);
+    const inserted = await db.insertInto('teams').values(row).returning(['id']).executeTakeFirst();
+    conveneIdToNewId.set(ct.id, inserted!.id);
+    console.log(`  ✓ ${ct.name} → ${inserted!.id}`);
   }
 
   // 6. Insert team memberships
@@ -124,11 +125,11 @@ async function main() {
       continue;
     }
 
-    const membership: NewTeamMembership = {
-      teamId: newTeamId,
-      theologianId,
+    const membership = {
+      team_id: newTeamId,
+      theologian_id: theologianId,
     };
-    await db.insert(teamMemberships).values(membership);
+    await db.insertInto('team_memberships').values(membership).execute();
     inserted++;
   }
 
@@ -146,7 +147,7 @@ async function main() {
 
 async function cleanup() {
   await conveneClient.end();
-  await theotankClient.end();
+  await db.destroy();
 }
 
 main().catch((err) => {

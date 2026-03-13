@@ -1,6 +1,4 @@
-import { getDb } from "@theotank/rds/db";
-import { users } from "@theotank/rds/schema";
-import { eq } from "drizzle-orm";
+import { getDb } from "@theotank/rds";
 import { config } from "../config";
 import { getClerkClient } from "../lib/clerk";
 import { logger } from "../lib/logger";
@@ -18,7 +16,7 @@ export const userProfileSync: CronJob = {
     const db = getDb();
     const clerk = getClerkClient();
 
-    const allUsers = await db.select().from(users);
+    const allUsers = await db.selectFrom('users').selectAll().execute();
     if (allUsers.length === 0) return { affected: 0 };
 
     let updated = 0;
@@ -26,7 +24,7 @@ export const userProfileSync: CronJob = {
 
     for (let i = 0; i < allUsers.length; i += batchSize) {
       const batch = allUsers.slice(i, i + batchSize);
-      const clerkIds = batch.map((u) => u.clerkId);
+      const clerkIds = batch.map((u) => u.clerk_id);
 
       try {
         const clerkUsers = await clerk.users.getUserList({
@@ -39,7 +37,7 @@ export const userProfileSync: CronJob = {
         );
 
         for (const localUser of batch) {
-          const clerkUser = clerkMap.get(localUser.clerkId);
+          const clerkUser = clerkMap.get(localUser.clerk_id);
           if (!clerkUser) continue;
 
           const email = clerkUser.emailAddresses?.[0]?.emailAddress ?? null;
@@ -50,12 +48,13 @@ export const userProfileSync: CronJob = {
           if (
             email !== localUser.email ||
             name !== localUser.name ||
-            imageUrl !== localUser.imageUrl
+            imageUrl !== localUser.image_url
           ) {
             await db
-              .update(users)
-              .set({ email, name, imageUrl, updatedAt: new Date() })
-              .where(eq(users.id, localUser.id));
+              .updateTable('users')
+              .set({ email, name, image_url: imageUrl, updated_at: new Date() })
+              .where('id', '=', localUser.id)
+              .execute();
             updated++;
           }
         }

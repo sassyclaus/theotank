@@ -1,7 +1,5 @@
 import { Hono } from "hono";
-import { getDb } from "@theotank/rds/db";
-import { theologians } from "@theotank/rds/schema";
-import { eq, inArray, or } from "drizzle-orm";
+import { getDb } from "@theotank/rds";
 import { colorForTradition } from "../lib/tradition-colors";
 import { publicAssetUrlVersioned } from "../lib/s3";
 import type { AppEnv } from "../lib/types";
@@ -28,14 +26,15 @@ app.get("/corpora", async (c) => {
   const db = getDb();
 
   const rows = await db
-    .select()
-    .from(theologians)
-    .where(
-      or(
-        eq(theologians.hasResearch, true),
-        inArray(theologians.slug, UPCOMING_SLUGS),
-      ),
-    );
+    .selectFrom("theologians")
+    .selectAll()
+    .where((eb) =>
+      eb.or([
+        eb("has_research", "=", true),
+        eb("slug", "in", UPCOMING_SLUGS),
+      ]),
+    )
+    .execute();
 
   const result = rows
     .map((row) => {
@@ -48,8 +47,8 @@ app.get("/corpora", async (c) => {
         color: colorForTradition(row.tradition),
         corpusName: meta?.corpusName ?? `${row.name} Corpus`,
         description: meta?.description ?? row.tagline ?? "",
-        available: row.hasResearch,
-        imageUrl: row.imageKey ? publicAssetUrlVersioned(row.imageKey, row.updatedAt) : null,
+        available: row.has_research,
+        imageUrl: row.image_key ? publicAssetUrlVersioned(row.image_key, row.updated_at) : null,
       };
     })
     .sort((a, b) => {

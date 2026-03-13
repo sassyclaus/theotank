@@ -1,7 +1,8 @@
-import { getDb } from "@theotank/rds/db";
-import { results, theologians } from "@theotank/rds/schema";
-import { eq } from "drizzle-orm";
-import type { Job } from "@theotank/rds/schema";
+import { getDb } from "@theotank/rds";
+import type { Selectable } from "kysely";
+import type { Jobs } from "@theotank/rds";
+
+type Job = Selectable<Jobs>;
 import { logProgress } from "../../progress";
 import { getEditionIds } from "../../lib/corpus-queries";
 import { withResultContext, failBoth, type ResultContext } from "../scaffold";
@@ -27,24 +28,25 @@ export const processResearch = withResultContext("research", async (job: Job, ct
   const rc = algoConfig.retrieval;
 
   // Load theologian
-  if (!result.theologianId) {
+  if (!result.theologian_id) {
     await failBoth(resultId, job.id, "No theologian linked to research result");
     return;
   }
 
-  const [theologian] = await db
-    .select()
-    .from(theologians)
-    .where(eq(theologians.id, result.theologianId));
+  const theologian = await db
+    .selectFrom('theologians')
+    .selectAll()
+    .where('id', '=', result.theologian_id)
+    .executeTakeFirst();
   if (!theologian) {
     await failBoth(resultId, job.id, "Theologian not found");
     return;
   }
 
-  const question = (result.inputPayload as { question: string }).question;
+  const question = (result.input_payload as { question: string }).question;
   const attribution = {
     result_id: resultId,
-    user_id: result.userId,
+    user_id: result.user_id,
     tool_type: "research",
   };
   log.info({ theologian: theologian.name, question: question.slice(0, 80) }, "Research context loaded");
@@ -188,24 +190,25 @@ export const processResearch = withResultContext("research", async (job: Job, ct
   await logProgress(resultId, "Your research is ready!");
 
   await db
-    .update(results)
+    .updateTable('results')
     .set({
       status: "completed",
-      contentKey,
-      previewData: { type: "research", citedSourcesCount: citations.length },
-      previewExcerpt,
-      models: {
+      content_key: contentKey,
+      preview_data: JSON.stringify({ type: "research", citedSourcesCount: citations.length }),
+      preview_excerpt: previewExcerpt,
+      models: JSON.stringify({
         interpreter: algoConfig.defaultModels.interpreter.model,
         search_planner: algoConfig.defaultModels.search_planner.model,
         translator: algoConfig.defaultModels.translator.model,
         claim_extractor: algoConfig.defaultModels.claim_extractor.model,
         verifier: algoConfig.defaultModels.verifier.model,
         synthesizer: algoConfig.defaultModels.synthesizer.model,
-      },
-      completedAt: new Date(),
-      updatedAt: new Date(),
+      }),
+      completed_at: new Date(),
+      updated_at: new Date(),
     })
-    .where(eq(results.id, resultId));
+    .where('id', '=', resultId)
+    .execute();
 
   log.info({ citationCount: citations.length }, "Research processing complete");
 });

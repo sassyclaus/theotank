@@ -1,6 +1,5 @@
 import OpenAI from "openai";
-import { getDb } from "@theotank/rds/db";
-import { inferenceLogs } from "@theotank/rds/schema";
+import { getDb } from "@theotank/rds";
 
 let client: OpenAI | null = null;
 
@@ -26,13 +25,13 @@ export async function embedQuery(
     // Fire-and-forget inference logging
     try {
       const db = getDb();
-      db.insert(inferenceLogs).values({
+      db.insertInto('inference_logs').values({
         source: "api",
         model,
-        promptTokens: response.usage.prompt_tokens,
-        completionTokens: 0,
+        prompt_tokens: response.usage.prompt_tokens,
+        completion_tokens: 0,
         attribution: userId ? { user_id: userId } : {},
-      }).then(() => {}, () => {});
+      }).execute().then(() => {}, () => {});
     } catch { /* silent */ }
 
     return response.data[0].embedding;

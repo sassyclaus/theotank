@@ -1,11 +1,6 @@
 import { Hono } from "hono";
-import { getDb } from "@theotank/rds/db";
-import {
-  collections,
-  collectionResults,
-  results,
-} from "@theotank/rds/schema";
-import { eq, sql, asc, max } from "drizzle-orm";
+import { getDb } from "@theotank/rds";
+import { sql } from "kysely";
 import type { AppEnv } from "../../lib/types";
 
 const app = new Hono<AppEnv>();
@@ -22,31 +17,34 @@ app.get("/", async (c) => {
   const db = getDb();
 
   const rows = await db
-    .select({
-      id: collections.id,
-      title: collections.title,
-      subtitle: collections.subtitle,
-      description: collections.description,
-      slug: collections.slug,
-      status: collections.status,
-      position: collections.position,
-      createdAt: collections.createdAt,
-      updatedAt: collections.updatedAt,
-      resultCount: sql<number>`count(${collectionResults.resultId})::int`,
-    })
-    .from(collections)
+    .selectFrom("collections")
     .leftJoin(
-      collectionResults,
-      eq(collections.id, collectionResults.collectionId)
+      "collection_results",
+      "collections.id",
+      "collection_results.collection_id"
     )
-    .groupBy(collections.id)
-    .orderBy(sql`${collections.position} ASC NULLS LAST`, asc(collections.createdAt));
+    .select([
+      "collections.id",
+      "collections.title",
+      "collections.subtitle",
+      "collections.description",
+      "collections.slug",
+      "collections.status",
+      "collections.position",
+      "collections.created_at",
+      "collections.updated_at",
+      sql<number>`count(collection_results.result_id)::int`.as("resultCount"),
+    ])
+    .groupBy("collections.id")
+    .orderBy(sql`collections.position ASC NULLS LAST`)
+    .orderBy("collections.created_at", "asc")
+    .execute();
 
   return c.json(
     rows.map((r) => ({
       ...r,
-      createdAt: r.createdAt.toISOString(),
-      updatedAt: r.updatedAt.toISOString(),
+      createdAt: new Date(r.created_at).toISOString(),
+      updatedAt: new Date(r.updated_at).toISOString(),
     }))
   );
 });
@@ -68,8 +66,8 @@ app.post("/", async (c) => {
 
   const slug = body.slug || slugify(body.title);
 
-  const [created] = await db
-    .insert(collections)
+  const created = await db
+    .insertInto("collections")
     .values({
       title: body.title,
       subtitle: body.subtitle ?? null,
@@ -77,12 +75,13 @@ app.post("/", async (c) => {
       slug,
       status: body.status ?? "draft",
     })
-    .returning();
+    .returningAll()
+    .executeTakeFirstOrThrow();
 
   return c.json({
     ...created,
-    createdAt: created.createdAt.toISOString(),
-    updatedAt: created.updatedAt.toISOString(),
+    createdAt: new Date(created.created_at).toISOString(),
+    updatedAt: new Date(created.updated_at).toISOString(),
     resultCount: 0,
   });
 });
@@ -96,12 +95,13 @@ app.put("/reorder", async (c) => {
     return c.json({ error: "collectionIds is required" }, 400);
   }
 
-  await db.transaction(async (tx) => {
+  await db.transaction().execute(async (trx) => {
     for (let i = 0; i < body.collectionIds.length; i++) {
-      await tx
-        .update(collections)
-        .set({ position: i + 1, updatedAt: new Date() })
-        .where(eq(collections.id, body.collectionIds[i]));
+      await trx
+        .updateTable("collections")
+        .set({ position: i + 1, updated_at: new Date() })
+        .where("id", "=", body.collectionIds[i])
+        .execute();
     }
   });
 
@@ -113,31 +113,33 @@ app.get("/:id", async (c) => {
   const id = c.req.param("id");
   const db = getDb();
 
-  const [collection] = await db
-    .select()
-    .from(collections)
-    .where(eq(collections.id, id));
+  const collection = await db
+    .selectFrom("collections")
+    .selectAll()
+    .where("id", "=", id)
+    .executeTakeFirst();
 
   if (!collection) {
     return c.json({ error: "Collection not found" }, 404);
   }
 
   const resultRows = await db
-    .select({
-      resultId: collectionResults.resultId,
-      position: collectionResults.position,
-      title: results.title,
-      toolType: results.toolType,
-    })
-    .from(collectionResults)
-    .innerJoin(results, eq(collectionResults.resultId, results.id))
-    .where(eq(collectionResults.collectionId, id))
-    .orderBy(asc(collectionResults.position));
+    .selectFrom("collection_results")
+    .innerJoin("results", "collection_results.result_id", "results.id")
+    .select([
+      "collection_results.result_id",
+      "collection_results.position",
+      "results.title",
+      "results.tool_type",
+    ])
+    .where("collection_results.collection_id", "=", id)
+    .orderBy("collection_results.position", "asc")
+    .execute();
 
   return c.json({
     ...collection,
-    createdAt: collection.createdAt.toISOString(),
-    updatedAt: collection.updatedAt.toISOString(),
+    createdAt: new Date(collection.created_at).toISOString(),
+    updatedAt: new Date(collection.updated_at).toISOString(),
     resultCount: resultRows.length,
     results: resultRows,
   });
@@ -156,16 +158,17 @@ app.put("/:id", async (c) => {
     position?: number | null;
   }>();
 
-  const [existing] = await db
-    .select({ id: collections.id })
-    .from(collections)
-    .where(eq(collections.id, id));
+  const existing = await db
+    .selectFrom("collections")
+    .select("id")
+    .where("id", "=", id)
+    .executeTakeFirst();
 
   if (!existing) {
     return c.json({ error: "Collection not found" }, 404);
   }
 
-  const updates: Record<string, unknown> = { updatedAt: new Date() };
+  const updates: Record<string, unknown> = { updated_at: new Date() };
   if (body.title !== undefined) updates.title = body.title;
   if (body.subtitle !== undefined) updates.subtitle = body.subtitle;
   if (body.description !== undefined) updates.description = body.description;
@@ -173,16 +176,17 @@ app.put("/:id", async (c) => {
   if (body.status !== undefined) updates.status = body.status;
   if (body.position !== undefined) updates.position = body.position;
 
-  const [updated] = await db
-    .update(collections)
+  const updated = await db
+    .updateTable("collections")
     .set(updates)
-    .where(eq(collections.id, id))
-    .returning();
+    .where("id", "=", id)
+    .returningAll()
+    .executeTakeFirstOrThrow();
 
   return c.json({
     ...updated,
-    createdAt: updated.createdAt.toISOString(),
-    updatedAt: updated.updatedAt.toISOString(),
+    createdAt: new Date(updated.created_at).toISOString(),
+    updatedAt: new Date(updated.updated_at).toISOString(),
   });
 });
 
@@ -191,7 +195,10 @@ app.delete("/:id", async (c) => {
   const id = c.req.param("id");
   const db = getDb();
 
-  await db.delete(collections).where(eq(collections.id, id));
+  await db
+    .deleteFrom("collections")
+    .where("id", "=", id)
+    .execute();
 
   return c.json({ ok: true });
 });
@@ -207,23 +214,28 @@ app.post("/:id/results", async (c) => {
   }
 
   // Get max position
-  const [maxPos] = await db
-    .select({ maxPosition: max(collectionResults.position) })
-    .from(collectionResults)
-    .where(eq(collectionResults.collectionId, collectionId));
+  const maxPos = await db
+    .selectFrom("collection_results")
+    .select(sql<number | null>`max(position)`.as("max_position"))
+    .where("collection_id", "=", collectionId)
+    .executeTakeFirstOrThrow();
 
-  const position = (maxPos.maxPosition ?? -1) + 1;
-
-  await db.insert(collectionResults).values({
-    collectionId,
-    resultId: body.resultId,
-    position,
-  });
+  const position = (maxPos.max_position ?? -1) + 1;
 
   await db
-    .update(collections)
-    .set({ updatedAt: new Date() })
-    .where(eq(collections.id, collectionId));
+    .insertInto("collection_results")
+    .values({
+      collection_id: collectionId,
+      result_id: body.resultId,
+      position,
+    })
+    .execute();
+
+  await db
+    .updateTable("collections")
+    .set({ updated_at: new Date() })
+    .where("id", "=", collectionId)
+    .execute();
 
   return c.json({ ok: true, position });
 });
@@ -235,15 +247,16 @@ app.delete("/:id/results/:resultId", async (c) => {
   const db = getDb();
 
   await db
-    .delete(collectionResults)
-    .where(
-      sql`${collectionResults.collectionId} = ${collectionId} AND ${collectionResults.resultId} = ${resultId}`
-    );
+    .deleteFrom("collection_results")
+    .where("collection_id", "=", collectionId)
+    .where("result_id", "=", resultId)
+    .execute();
 
   await db
-    .update(collections)
-    .set({ updatedAt: new Date() })
-    .where(eq(collections.id, collectionId));
+    .updateTable("collections")
+    .set({ updated_at: new Date() })
+    .where("id", "=", collectionId)
+    .execute();
 
   return c.json({ ok: true });
 });
@@ -258,21 +271,22 @@ app.put("/:id/results/reorder", async (c) => {
     return c.json({ error: "resultIds is required" }, 400);
   }
 
-  await db.transaction(async (tx) => {
+  await db.transaction().execute(async (trx) => {
     for (let i = 0; i < body.resultIds.length; i++) {
-      await tx
-        .update(collectionResults)
+      await trx
+        .updateTable("collection_results")
         .set({ position: i })
-        .where(
-          sql`${collectionResults.collectionId} = ${collectionId} AND ${collectionResults.resultId} = ${body.resultIds[i]}`
-        );
+        .where("collection_id", "=", collectionId)
+        .where("result_id", "=", body.resultIds[i])
+        .execute();
     }
   });
 
   await db
-    .update(collections)
-    .set({ updatedAt: new Date() })
-    .where(eq(collections.id, collectionId));
+    .updateTable("collections")
+    .set({ updated_at: new Date() })
+    .where("id", "=", collectionId)
+    .execute();
 
   return c.json({ ok: true });
 });

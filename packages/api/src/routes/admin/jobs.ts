@@ -1,7 +1,6 @@
 import { Hono } from "hono";
-import { getDb } from "@theotank/rds/db";
-import { jobs, results } from "@theotank/rds/schema";
-import { eq, desc, asc, sql, and, like, or } from "drizzle-orm";
+import { getDb } from "@theotank/rds";
+import { sql } from "kysely";
 import type { AppEnv } from "../../lib/types";
 
 const app = new Hono<AppEnv>();
@@ -19,68 +18,80 @@ app.get("/", async (c) => {
   const order = c.req.query("order") === "asc" ? "asc" : "desc";
 
   // Build filter conditions
-  const conditions = [];
-  if (status) conditions.push(eq(jobs.status, status as any));
-  if (type) conditions.push(eq(jobs.type, type));
-  if (priority) conditions.push(eq(jobs.priority, priority as any));
-  if (search) conditions.push(like(jobs.id, `${search}%`));
-
-  const where = conditions.length > 0 ? and(...conditions) : undefined;
+  let statsQuery = db
+    .selectFrom("jobs")
+    .select([
+      sql<number>`count(*) filter (where status = 'pending')`.as("pending"),
+      sql<number>`count(*) filter (where status = 'processing')`.as("processing"),
+      sql<number>`count(*) filter (where status = 'completed')`.as("completed"),
+      sql<number>`count(*) filter (where status = 'failed')`.as("failed"),
+      sql<number>`count(*) filter (where status = 'completed' and completed_at >= now() - interval '24 hours')`.as("completedLast24h"),
+      sql<number>`count(*) filter (where status = 'failed' and updated_at >= now() - interval '24 hours')`.as("failedLast24h"),
+      sql<number | null>`avg(extract(epoch from (completed_at - started_at)) * 1000) filter (where completed_at is not null and started_at is not null)`.as("avgDurationMs"),
+    ]);
 
   // Stats — always computed across ALL jobs (unfiltered)
-  const now24h = sql`now() - interval '24 hours'`;
-  const [stats] = await db
-    .select({
-      pending: sql<number>`count(*) filter (where ${jobs.status} = 'pending')`.mapWith(Number),
-      processing: sql<number>`count(*) filter (where ${jobs.status} = 'processing')`.mapWith(Number),
-      completed: sql<number>`count(*) filter (where ${jobs.status} = 'completed')`.mapWith(Number),
-      failed: sql<number>`count(*) filter (where ${jobs.status} = 'failed')`.mapWith(Number),
-      completedLast24h: sql<number>`count(*) filter (where ${jobs.status} = 'completed' and ${jobs.completedAt} >= ${now24h})`.mapWith(Number),
-      failedLast24h: sql<number>`count(*) filter (where ${jobs.status} = 'failed' and ${jobs.updatedAt} >= ${now24h})`.mapWith(Number),
-      avgDurationMs: sql<number | null>`avg(extract(epoch from (${jobs.completedAt} - ${jobs.startedAt})) * 1000) filter (where ${jobs.completedAt} is not null and ${jobs.startedAt} is not null)`,
-    })
-    .from(jobs);
+  const stats = await statsQuery.executeTakeFirstOrThrow();
 
   // Count with filters for pagination
-  const [{ count: total }] = await db
-    .select({ count: sql<number>`count(*)`.mapWith(Number) })
-    .from(jobs)
-    .where(where);
+  let countQuery = db
+    .selectFrom("jobs")
+    .select(sql<number>`count(*)`.as("count"));
+
+  if (status) countQuery = countQuery.where("status", "=", status as any);
+  if (type) countQuery = countQuery.where("type", "=", type);
+  if (priority) countQuery = countQuery.where("priority", "=", priority as any);
+  if (search) countQuery = countQuery.where("id", "like", `${search}%`);
+
+  const { count: total } = await countQuery.executeTakeFirstOrThrow();
 
   // Jobs with LEFT JOIN on results to get resultId + resultTitle
-  const orderCol = sort === "updatedAt" ? jobs.updatedAt : jobs.createdAt;
-  const orderFn = order === "asc" ? asc : desc;
+  const sortCol = sort === "updatedAt" ? "jobs.updated_at" as const : "jobs.created_at" as const;
 
-  const rows = await db
-    .select({
-      id: jobs.id,
-      type: jobs.type,
-      status: jobs.status,
-      priority: jobs.priority,
-      attempts: jobs.attempts,
-      maxAttempts: jobs.maxAttempts,
-      lockedBy: jobs.lockedBy,
-      errorMessage: jobs.errorMessage,
-      resultId: results.id,
-      resultTitle: results.title,
-      createdAt: jobs.createdAt,
-      updatedAt: jobs.updatedAt,
-      startedAt: jobs.startedAt,
-      completedAt: jobs.completedAt,
-    })
-    .from(jobs)
-    .leftJoin(results, or(eq(results.jobId, jobs.id), eq(results.pdfJobId, jobs.id)))
-    .where(where)
-    .orderBy(orderFn(orderCol))
+  let rowsQuery = db
+    .selectFrom("jobs")
+    .leftJoin("results", (join) =>
+      join.on((eb) =>
+        eb.or([
+          eb("results.job_id", "=", eb.ref("jobs.id")),
+          eb("results.pdf_job_id", "=", eb.ref("jobs.id")),
+        ])
+      )
+    )
+    .select([
+      "jobs.id",
+      "jobs.type",
+      "jobs.status",
+      "jobs.priority",
+      "jobs.attempts",
+      "jobs.max_attempts",
+      "jobs.locked_by",
+      "jobs.error_message",
+      "results.id as resultId",
+      "results.title as resultTitle",
+      "jobs.created_at",
+      "jobs.updated_at",
+      "jobs.started_at",
+      "jobs.completed_at",
+    ]);
+
+  if (status) rowsQuery = rowsQuery.where("jobs.status", "=", status as any);
+  if (type) rowsQuery = rowsQuery.where("jobs.type", "=", type);
+  if (priority) rowsQuery = rowsQuery.where("jobs.priority", "=", priority as any);
+  if (search) rowsQuery = rowsQuery.where("jobs.id", "like", `${search}%`);
+
+  const rows = await rowsQuery
+    .orderBy(sortCol, order)
     .limit(limit)
-    .offset(offset);
+    .offset(offset)
+    .execute();
 
   const jobList = rows.map((r) => ({
     ...r,
-    createdAt: r.createdAt.toISOString(),
-    updatedAt: r.updatedAt.toISOString(),
-    startedAt: r.startedAt?.toISOString() ?? null,
-    completedAt: r.completedAt?.toISOString() ?? null,
+    createdAt: r.created_at.toISOString(),
+    updatedAt: r.updated_at.toISOString(),
+    startedAt: r.started_at?.toISOString() ?? null,
+    completedAt: r.completed_at?.toISOString() ?? null,
   }));
 
   return c.json({
@@ -89,7 +100,7 @@ app.get("/", async (c) => {
       avgDurationMs: stats.avgDurationMs ? Math.round(Number(stats.avgDurationMs)) : null,
     },
     jobs: jobList,
-    total,
+    total: Number(total),
   });
 });
 
@@ -98,23 +109,28 @@ app.get("/:id", async (c) => {
   const id = c.req.param("id");
   const db = getDb();
 
-  const [job] = await db.select().from(jobs).where(eq(jobs.id, id));
+  const job = await db
+    .selectFrom("jobs")
+    .selectAll()
+    .where("id", "=", id)
+    .executeTakeFirst();
+
   if (!job) {
     return c.json({ error: "Job not found" }, 404);
   }
 
   // Find linked result (jobId or pdfJobId matches)
-  const [linkedResult] = await db
-    .select({
-      id: results.id,
-      title: results.title,
-      toolType: results.toolType,
-      status: results.status,
-      userId: results.userId,
-    })
-    .from(results)
-    .where(or(eq(results.jobId, job.id), eq(results.pdfJobId, job.id)))
-    .limit(1);
+  const linkedResult = await db
+    .selectFrom("results")
+    .select(["id", "title", "tool_type", "status", "user_id"])
+    .where((eb) =>
+      eb.or([
+        eb("job_id", "=", job.id),
+        eb("pdf_job_id", "=", job.id),
+      ])
+    )
+    .limit(1)
+    .executeTakeFirst();
 
   return c.json({
     id: job.id,
@@ -122,18 +138,18 @@ app.get("/:id", async (c) => {
     status: job.status,
     priority: job.priority,
     attempts: job.attempts,
-    maxAttempts: job.maxAttempts,
-    lockedBy: job.lockedBy,
-    lockedAt: job.lockedAt?.toISOString() ?? null,
+    maxAttempts: job.max_attempts,
+    lockedBy: job.locked_by,
+    lockedAt: job.locked_at?.toISOString() ?? null,
     payload: job.payload,
     result: job.result,
-    errorMessage: job.errorMessage,
-    errorDetails: job.errorDetails,
-    scheduledFor: job.scheduledFor?.toISOString() ?? null,
-    createdAt: job.createdAt.toISOString(),
-    updatedAt: job.updatedAt.toISOString(),
-    startedAt: job.startedAt?.toISOString() ?? null,
-    completedAt: job.completedAt?.toISOString() ?? null,
+    errorMessage: job.error_message,
+    errorDetails: job.error_details,
+    scheduledFor: job.scheduled_for?.toISOString() ?? null,
+    createdAt: job.created_at.toISOString(),
+    updatedAt: job.updated_at.toISOString(),
+    startedAt: job.started_at?.toISOString() ?? null,
+    completedAt: job.completed_at?.toISOString() ?? null,
     linkedResult: linkedResult ?? null,
   });
 });
@@ -143,39 +159,49 @@ app.post("/:id/retry", async (c) => {
   const id = c.req.param("id");
   const db = getDb();
 
-  const [job] = await db.select().from(jobs).where(eq(jobs.id, id));
+  const job = await db
+    .selectFrom("jobs")
+    .selectAll()
+    .where("id", "=", id)
+    .executeTakeFirst();
+
   if (!job) return c.json({ error: "Job not found" }, 404);
   if (job.status !== "failed") {
     return c.json({ error: "Only failed jobs can be retried" }, 400);
   }
 
-  await db.transaction(async (tx) => {
-    await tx
-      .update(jobs)
+  await db.transaction().execute(async (trx) => {
+    await trx
+      .updateTable("jobs")
       .set({
         status: "pending",
         attempts: 0,
-        lockedBy: null,
-        lockedAt: null,
-        errorMessage: null,
-        errorDetails: null,
+        locked_by: null,
+        locked_at: null,
+        error_message: null,
+        error_details: null,
         result: null,
-        startedAt: null,
-        completedAt: null,
-        updatedAt: new Date(),
+        started_at: null,
+        completed_at: null,
+        updated_at: new Date(),
       })
-      .where(eq(jobs.id, id));
+      .where("id", "=", id)
+      .execute();
 
     // Reset linked result if it's also failed
-    await tx
-      .update(results)
-      .set({ status: "pending", errorMessage: null, updatedAt: new Date() })
-      .where(
-        and(
-          or(eq(results.jobId, id), eq(results.pdfJobId, id)),
-          eq(results.status, "failed"),
-        ),
-      );
+    await trx
+      .updateTable("results")
+      .set({ status: "pending", error_message: null, updated_at: new Date() })
+      .where((eb) =>
+        eb.and([
+          eb.or([
+            eb("job_id", "=", id),
+            eb("pdf_job_id", "=", id),
+          ]),
+          eb("status", "=", "failed"),
+        ])
+      )
+      .execute();
   });
 
   return c.json({ ok: true });
@@ -186,7 +212,12 @@ app.post("/:id/cancel", async (c) => {
   const id = c.req.param("id");
   const db = getDb();
 
-  const [job] = await db.select().from(jobs).where(eq(jobs.id, id));
+  const job = await db
+    .selectFrom("jobs")
+    .selectAll()
+    .where("id", "=", id)
+    .executeTakeFirst();
+
   if (!job) return c.json({ error: "Job not found" }, 404);
   if (job.status !== "pending" && job.status !== "processing") {
     return c.json({ error: "Only pending or processing jobs can be cancelled" }, 400);
@@ -194,28 +225,36 @@ app.post("/:id/cancel", async (c) => {
 
   const cancelMsg = "Cancelled by admin";
 
-  await db.transaction(async (tx) => {
-    await tx
-      .update(jobs)
+  await db.transaction().execute(async (trx) => {
+    await trx
+      .updateTable("jobs")
       .set({
         status: "failed",
-        errorMessage: cancelMsg,
-        lockedBy: null,
-        lockedAt: null,
-        updatedAt: new Date(),
+        error_message: cancelMsg,
+        locked_by: null,
+        locked_at: null,
+        updated_at: new Date(),
       })
-      .where(eq(jobs.id, id));
+      .where("id", "=", id)
+      .execute();
 
     // Fail linked result if it's pending/processing
-    await tx
-      .update(results)
-      .set({ status: "failed", errorMessage: cancelMsg, updatedAt: new Date() })
-      .where(
-        and(
-          or(eq(results.jobId, id), eq(results.pdfJobId, id)),
-          or(eq(results.status, "pending"), eq(results.status, "processing")),
-        ),
-      );
+    await trx
+      .updateTable("results")
+      .set({ status: "failed", error_message: cancelMsg, updated_at: new Date() })
+      .where((eb) =>
+        eb.and([
+          eb.or([
+            eb("job_id", "=", id),
+            eb("pdf_job_id", "=", id),
+          ]),
+          eb.or([
+            eb("status", "=", "pending"),
+            eb("status", "=", "processing"),
+          ]),
+        ])
+      )
+      .execute();
   });
 
   return c.json({ ok: true });
@@ -232,16 +271,22 @@ app.put("/:id/priority", async (c) => {
   }
 
   const db = getDb();
-  const [job] = await db.select().from(jobs).where(eq(jobs.id, id));
+  const job = await db
+    .selectFrom("jobs")
+    .selectAll()
+    .where("id", "=", id)
+    .executeTakeFirst();
+
   if (!job) return c.json({ error: "Job not found" }, 404);
   if (job.status !== "pending" && job.status !== "processing") {
     return c.json({ error: "Can only change priority of pending or processing jobs" }, 400);
   }
 
   await db
-    .update(jobs)
-    .set({ priority: body.priority as any, updatedAt: new Date() })
-    .where(eq(jobs.id, id));
+    .updateTable("jobs")
+    .set({ priority: body.priority as any, updated_at: new Date() })
+    .where("id", "=", id)
+    .execute();
 
   return c.json({ ok: true });
 });
@@ -250,44 +295,50 @@ app.put("/:id/priority", async (c) => {
 app.post("/bulk/retry", async (c) => {
   const db = getDb();
 
-  const count = await db.transaction(async (tx) => {
-    const failedJobs = await tx
-      .select({ id: jobs.id })
-      .from(jobs)
-      .where(eq(jobs.status, "failed"));
+  const count = await db.transaction().execute(async (trx) => {
+    const failedJobs = await trx
+      .selectFrom("jobs")
+      .select("id")
+      .where("status", "=", "failed")
+      .execute();
 
     if (failedJobs.length === 0) return 0;
 
     const jobIds = failedJobs.map((j) => j.id);
 
     // Reset all failed jobs
-    await tx
-      .update(jobs)
+    await trx
+      .updateTable("jobs")
       .set({
         status: "pending",
         attempts: 0,
-        lockedBy: null,
-        lockedAt: null,
-        errorMessage: null,
-        errorDetails: null,
+        locked_by: null,
+        locked_at: null,
+        error_message: null,
+        error_details: null,
         result: null,
-        startedAt: null,
-        completedAt: null,
-        updatedAt: new Date(),
+        started_at: null,
+        completed_at: null,
+        updated_at: new Date(),
       })
-      .where(eq(jobs.status, "failed"));
+      .where("status", "=", "failed")
+      .execute();
 
     // Reset linked failed results
     for (const jobId of jobIds) {
-      await tx
-        .update(results)
-        .set({ status: "pending", errorMessage: null, updatedAt: new Date() })
-        .where(
-          and(
-            or(eq(results.jobId, jobId), eq(results.pdfJobId, jobId)),
-            eq(results.status, "failed"),
-          ),
-        );
+      await trx
+        .updateTable("results")
+        .set({ status: "pending", error_message: null, updated_at: new Date() })
+        .where((eb) =>
+          eb.and([
+            eb.or([
+              eb("job_id", "=", jobId),
+              eb("pdf_job_id", "=", jobId),
+            ]),
+            eb("status", "=", "failed"),
+          ])
+        )
+        .execute();
     }
 
     return failedJobs.length;
@@ -301,37 +352,43 @@ app.post("/bulk/cancel", async (c) => {
   const db = getDb();
   const cancelMsg = "Cancelled by admin";
 
-  const count = await db.transaction(async (tx) => {
-    const pendingJobs = await tx
-      .select({ id: jobs.id })
-      .from(jobs)
-      .where(eq(jobs.status, "pending"));
+  const count = await db.transaction().execute(async (trx) => {
+    const pendingJobs = await trx
+      .selectFrom("jobs")
+      .select("id")
+      .where("status", "=", "pending")
+      .execute();
 
     if (pendingJobs.length === 0) return 0;
 
     const jobIds = pendingJobs.map((j) => j.id);
 
     // Cancel all pending jobs
-    await tx
-      .update(jobs)
+    await trx
+      .updateTable("jobs")
       .set({
         status: "failed",
-        errorMessage: cancelMsg,
-        updatedAt: new Date(),
+        error_message: cancelMsg,
+        updated_at: new Date(),
       })
-      .where(eq(jobs.status, "pending"));
+      .where("status", "=", "pending")
+      .execute();
 
     // Fail linked pending results
     for (const jobId of jobIds) {
-      await tx
-        .update(results)
-        .set({ status: "failed", errorMessage: cancelMsg, updatedAt: new Date() })
-        .where(
-          and(
-            or(eq(results.jobId, jobId), eq(results.pdfJobId, jobId)),
-            eq(results.status, "pending"),
-          ),
-        );
+      await trx
+        .updateTable("results")
+        .set({ status: "failed", error_message: cancelMsg, updated_at: new Date() })
+        .where((eb) =>
+          eb.and([
+            eb.or([
+              eb("job_id", "=", jobId),
+              eb("pdf_job_id", "=", jobId),
+            ]),
+            eb("status", "=", "pending"),
+          ])
+        )
+        .execute();
     }
 
     return pendingJobs.length;

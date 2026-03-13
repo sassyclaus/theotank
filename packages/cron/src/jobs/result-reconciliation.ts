@@ -1,5 +1,5 @@
-import { getDb } from "@theotank/rds/db";
-import { sql } from "drizzle-orm";
+import { getDb } from "@theotank/rds";
+import { sql } from "kysely";
 import type { CronJob } from "./types";
 
 export const resultReconciliation: CronJob = {
@@ -10,7 +10,7 @@ export const resultReconciliation: CronJob = {
     const db = getDb();
 
     // Pass 1: Results stuck in processing but linked job completed
-    const completedSync = await db.execute(sql`
+    const { rows: completedSync } = await sql`
       UPDATE results r
       SET
         status = 'completed',
@@ -21,10 +21,10 @@ export const resultReconciliation: CronJob = {
         AND r.status = 'processing'
         AND j.status = 'completed'
       RETURNING r.id
-    `);
+    `.execute(db);
 
     // Pass 2: Results stuck in processing but linked job failed
-    const failedSync = await db.execute(sql`
+    const { rows: failedSync } = await sql`
       UPDATE results r
       SET
         status = 'failed',
@@ -35,10 +35,10 @@ export const resultReconciliation: CronJob = {
         AND r.status = 'processing'
         AND j.status = 'failed'
       RETURNING r.id
-    `);
+    `.execute(db);
 
     // Pass 3: Orphaned pending results with no job, older than 1 hour
-    const orphaned = await db.execute(sql`
+    const { rows: orphaned } = await sql`
       UPDATE results
       SET
         status = 'failed',
@@ -48,7 +48,7 @@ export const resultReconciliation: CronJob = {
         AND job_id IS NULL
         AND created_at < NOW() - interval '1 hour'
       RETURNING id
-    `);
+    `.execute(db);
 
     return {
       affected: completedSync.length + failedSync.length + orphaned.length,

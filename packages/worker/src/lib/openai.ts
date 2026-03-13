@@ -1,8 +1,7 @@
 import OpenAI, { toFile } from "openai";
 import { config } from "../config";
 import { logger, type Logger } from "./logger";
-import { getDb } from "@theotank/rds/db";
-import { inferenceLogs } from "@theotank/rds/schema";
+import { getDb } from "@theotank/rds";
 
 // ── Semaphore ────────────────────────────────────────────────────────
 
@@ -56,14 +55,14 @@ async function logInference(data: {
 }): Promise<void> {
   try {
     const db = getDb();
-    await db.insert(inferenceLogs).values({
+    await db.insertInto('inference_logs').values({
       source: data.source,
       model: data.model,
-      promptTokens: data.promptTokens ?? 0,
-      completionTokens: data.completionTokens ?? 0,
-      durationSeconds: data.durationSeconds,
-      attribution: data.attribution,
-    });
+      prompt_tokens: data.promptTokens ?? 0,
+      completion_tokens: data.completionTokens ?? 0,
+      duration_seconds: data.durationSeconds,
+      attribution: JSON.stringify(data.attribution),
+    }).execute();
   } catch { /* silent — never fail an AI call due to logging */ }
 }
 

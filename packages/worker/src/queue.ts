@@ -1,14 +1,15 @@
-import { getDb } from "@theotank/rds/db";
-import { jobs } from "@theotank/rds/schema";
-import { eq, sql } from "drizzle-orm";
-import type { Job } from "@theotank/rds/schema";
+import { getDb, sql } from "@theotank/rds";
+import type { Selectable } from "kysely";
+import type { Jobs } from "@theotank/rds";
 import { config } from "./config";
 import { logger } from "./lib/logger";
+
+type Job = Selectable<Jobs>;
 
 export async function claimJob(): Promise<Job | null> {
   const db = getDb();
 
-  const rows = await db.execute(sql`
+  const { rows } = await sql`
     UPDATE jobs
     SET
       status = 'processing',
@@ -34,7 +35,7 @@ export async function claimJob(): Promise<Job | null> {
       LIMIT 1
     )
     RETURNING *
-  `);
+  `.execute(db);
 
   if (!rows || rows.length === 0) return null;
   return rows[0] as unknown as Job;
@@ -46,14 +47,15 @@ export async function completeJob(
 ): Promise<void> {
   const db = getDb();
   await db
-    .update(jobs)
+    .updateTable('jobs')
     .set({
       status: "completed",
-      result,
-      completedAt: new Date(),
-      updatedAt: new Date(),
+      result: JSON.stringify(result),
+      completed_at: new Date(),
+      updated_at: new Date(),
     })
-    .where(eq(jobs.id, jobId));
+    .where('id', '=', jobId)
+    .execute();
 }
 
 export async function failJob(
@@ -63,14 +65,15 @@ export async function failJob(
 ): Promise<void> {
   const db = getDb();
   await db
-    .update(jobs)
+    .updateTable('jobs')
     .set({
       status: "failed",
-      errorMessage,
-      errorDetails: errorDetails ?? null,
-      updatedAt: new Date(),
+      error_message: errorMessage,
+      error_details: errorDetails ? JSON.stringify(errorDetails) : null,
+      updated_at: new Date(),
     })
-    .where(eq(jobs.id, jobId));
+    .where('id', '=', jobId)
+    .execute();
 }
 
 // ── Stale lock recovery ──────────────────────────────────────────────
@@ -82,7 +85,7 @@ export async function recoverStaleJobs(
   const db = getDb();
 
   // Reset retryable jobs (attempts < maxAttempts) back to pending
-  const retryable = await db.execute(sql`
+  const { rows: retryable } = await sql`
     UPDATE jobs
     SET
       status = 'pending',
@@ -93,10 +96,10 @@ export async function recoverStaleJobs(
       AND locked_at < NOW() - (${thresholdMs} || ' milliseconds')::interval
       AND attempts < max_attempts
     RETURNING id, type, attempts
-  `);
+  `.execute(db);
 
   // Mark exhausted jobs (attempts >= maxAttempts) as failed
-  const exhausted = await db.execute(sql`
+  const { rows: exhausted } = await sql`
     UPDATE jobs
     SET
       status = 'failed',
@@ -106,7 +109,7 @@ export async function recoverStaleJobs(
       AND locked_at < NOW() - (${thresholdMs} || ' milliseconds')::interval
       AND attempts >= max_attempts
     RETURNING id, type, attempts
-  `);
+  `.execute(db);
 
   if (retryable.length > 0 || exhausted.length > 0) {
     logger.warn(

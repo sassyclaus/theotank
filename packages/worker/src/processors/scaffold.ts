@@ -1,16 +1,17 @@
-import { getDb } from "@theotank/rds/db";
-import { results, jobs, users } from "@theotank/rds/schema";
-import { eq } from "drizzle-orm";
-import type { Job } from "@theotank/rds/schema";
+import { getDb } from "@theotank/rds";
+import type { Selectable } from "kysely";
+import type { Jobs, Results } from "@theotank/rds";
 import type { Logger } from "../lib/logger";
 import { ai } from "../lib/openai";
 import { sendResultCompletedEmail, getEmailFromClerk } from "../lib/email";
 import { getDefaultConfig, ALGO_VERSIONS, type AlgoConfig, type ToolType } from "../default-configs";
 
+type Job = Selectable<Jobs>;
+
 // ── Types ────────────────────────────────────────────────────────────
 
 export interface ResultContext {
-  result: typeof results.$inferSelect;
+  result: Selectable<Results>;
   algoConfig: AlgoConfig;
   log: Logger;
 }
@@ -24,13 +25,15 @@ export async function failBoth(
 ): Promise<void> {
   const db = getDb();
   await db
-    .update(results)
-    .set({ status: "failed", errorMessage: message, updatedAt: new Date() })
-    .where(eq(results.id, resultId));
+    .updateTable('results')
+    .set({ status: "failed", error_message: message, updated_at: new Date() })
+    .where('id', '=', resultId)
+    .execute();
   await db
-    .update(jobs)
-    .set({ status: "failed", errorMessage: message, updatedAt: new Date() })
-    .where(eq(jobs.id, jobId));
+    .updateTable('jobs')
+    .set({ status: "failed", error_message: message, updated_at: new Date() })
+    .where('id', '=', jobId)
+    .execute();
 }
 
 // ── withResultContext ────────────────────────────────────────────────
@@ -45,25 +48,27 @@ export function withResultContext(
     const { resultId } = payload;
 
     // 1. Load result row (throws if missing — result not yet marked processing)
-    const [result] = await db
-      .select()
-      .from(results)
-      .where(eq(results.id, resultId));
+    const result = await db
+      .selectFrom('results')
+      .selectAll()
+      .where('id', '=', resultId)
+      .executeTakeFirst();
     if (!result) {
       throw new Error(`Result ${resultId} not found`);
     }
 
-    log = log.child({ resultId, userId: result.userId });
+    log = log.child({ resultId, userId: result.user_id });
 
     // 2. Mark result as processing with version string from code
     await db
-      .update(results)
+      .updateTable('results')
       .set({
         status: "processing",
-        algorithmVersion: ALGO_VERSIONS[toolType],
-        updatedAt: new Date(),
+        algorithm_version: ALGO_VERSIONS[toolType],
+        updated_at: new Date(),
       })
-      .where(eq(results.id, resultId));
+      .where('id', '=', resultId)
+      .execute();
 
     // 3. Run core logic — any unhandled error triggers failBoth
     try {
@@ -77,10 +82,10 @@ export function withResultContext(
 
     // 5. Post-completion: embed question for library search (non-blocking)
     try {
-      const payload = result.inputPayload as Record<string, unknown>;
+      const inputPayload = result.input_payload as Record<string, unknown>;
       const searchText =
-        (payload.question as string) ||
-        (payload.focusPrompt as string) ||
+        (inputPayload.question as string) ||
+        (inputPayload.focusPrompt as string) ||
         result.title;
 
       if (searchText) {
@@ -92,15 +97,16 @@ export function withResultContext(
             log,
             attribution: {
               result_id: resultId,
-              user_id: result.userId,
+              user_id: result.user_id,
               tool_type: toolType,
             },
           },
         );
         await db
-          .update(results)
-          .set({ embeddedQuestion: embedding })
-          .where(eq(results.id, resultId));
+          .updateTable('results')
+          .set({ embedded_question: JSON.stringify(embedding) })
+          .where('id', '=', resultId)
+          .execute();
         log.info("Embedded question for search");
       }
     } catch (err) {
@@ -109,19 +115,21 @@ export function withResultContext(
 
     // 6. Send completion notification email (non-blocking)
     try {
-      const [completedResult] = await db
-        .select()
-        .from(results)
-        .where(eq(results.id, resultId));
+      const completedResult = await db
+        .selectFrom('results')
+        .selectAll()
+        .where('id', '=', resultId)
+        .executeTakeFirst();
 
       // Look up user email: DB first, Clerk API fallback
-      const [user] = await db
-        .select()
-        .from(users)
-        .where(eq(users.clerkId, result.userId));
+      const user = await db
+        .selectFrom('users')
+        .selectAll()
+        .where('clerk_id', '=', result.user_id)
+        .executeTakeFirst();
       let email = user?.email ?? null;
       if (!email) {
-        email = await getEmailFromClerk(result.userId, log);
+        email = await getEmailFromClerk(result.user_id, log);
       }
 
       if (email) {
@@ -130,7 +138,7 @@ export function withResultContext(
           resultId,
           title: result.title,
           toolType,
-          previewExcerpt: completedResult?.previewExcerpt ?? null,
+          previewExcerpt: completedResult?.preview_excerpt ?? null,
           log,
         });
       }

@@ -1,29 +1,11 @@
 import { Hono } from "hono";
-import { getDb } from "@theotank/rds/db";
-import {
-  results,
-  teamSnapshots,
-  resultSaves,
-  resultViews,
-  collections,
-  collectionResults,
-} from "@theotank/rds/schema";
-import { eq, sql, asc, and, ne, isNull, gte, ilike } from "drizzle-orm";
+import { getDb } from "@theotank/rds";
+import { sql } from "kysely";
 import { headObject, presignGetUrl, publicAssetUrl } from "../lib/s3";
 import { embedQuery } from "../lib/embeddings";
 import type { AppEnv } from "../lib/types";
 
 const app = new Hono<AppEnv>();
-
-/** Reusable WHERE conditions for public visibility */
-const publicVisibility = and(
-  eq(results.status, "completed"),
-  eq(results.isPrivate, false),
-  ne(results.toolType, "research"),
-  isNull(results.hiddenAt),
-  eq(results.moderationStatus, "approved"),
-  sql`${results.contentKey} IS NOT NULL`
-);
 
 // GET /public/results — list public results with sorting
 app.get("/results", async (c) => {
@@ -35,98 +17,141 @@ app.get("/results", async (c) => {
   const search = c.req.query("search")?.trim();
 
   const db = getDb();
-  const sevenDaysAgo = sql`now() - interval '7 days'`;
 
-  const searchFilter = search
-    ? ilike(results.title, `%${search}%`)
-    : undefined;
-
-  const whereConditions = searchFilter
-    ? and(publicVisibility, searchFilter)
-    : publicVisibility;
+  /** Reusable WHERE builder for public visibility */
+  function applyPublicVisibility<T extends { where: (...args: any[]) => T }>(qb: T): T {
+    let q = qb
+      .where("results.status", "=", "completed")
+      .where("results.is_private", "=", false)
+      .where("results.tool_type", "!=", "research")
+      .where("results.hidden_at", "is", null)
+      .where("results.moderation_status", "=", "approved")
+      .where("results.content_key", "is not", null);
+    if (search) {
+      q = q.where("results.title", "ilike", `%${search}%`);
+    }
+    return q;
+  }
 
   if (sort === "views_week") {
-    const rows = await db
-      .select({
-        id: results.id,
-        title: results.title,
-        toolType: results.toolType,
-        teamName: teamSnapshots.name,
-        previewExcerpt: results.previewExcerpt,
-        viewCount: results.viewCount,
-        saveCount: results.saveCount,
-        createdAt: results.createdAt,
-        weeklyViews: sql<number>`coalesce(sum(${resultViews.viewCount}), 0)::int`,
-      })
-      .from(results)
-      .leftJoin(teamSnapshots, eq(results.teamSnapshotId, teamSnapshots.id))
-      .leftJoin(
-        resultViews,
-        and(
-          eq(resultViews.resultId, results.id),
-          gte(resultViews.periodEnd, sevenDaysAgo)
+    const rows = await applyPublicVisibility(
+      db
+        .selectFrom("results")
+        .leftJoin("team_snapshots", "team_snapshots.id", "results.team_snapshot_id")
+        .leftJoin("result_views", (join) =>
+          join
+            .onRef("result_views.result_id", "=", "results.id")
+            .on("result_views.period_end", ">=", sql`now() - interval '7 days'`)
         )
-      )
-      .where(whereConditions)
-      .groupBy(results.id, teamSnapshots.name)
-      .orderBy(sql`coalesce(sum(${resultViews.viewCount}), 0) DESC`)
-      .limit(limit);
+        .select([
+          "results.id",
+          "results.title",
+          "results.tool_type",
+          "team_snapshots.name as team_name",
+          "results.preview_excerpt",
+          "results.view_count",
+          "results.save_count",
+          "results.created_at",
+          sql<number>`coalesce(sum(result_views.view_count), 0)::int`.as("weekly_views"),
+        ])
+    )
+      .groupBy(["results.id", "team_snapshots.name"])
+      .orderBy(sql`coalesce(sum(result_views.view_count), 0)`, "desc")
+      .limit(limit)
+      .execute();
 
     c.header("Cache-Control", "public, max-age=60");
-    return c.json(rows);
+    return c.json(
+      rows.map((r) => ({
+        id: r.id,
+        title: r.title,
+        toolType: r.tool_type,
+        teamName: r.team_name,
+        previewExcerpt: r.preview_excerpt,
+        viewCount: r.view_count,
+        saveCount: r.save_count,
+        createdAt: r.created_at,
+        weeklyViews: r.weekly_views,
+      }))
+    );
   }
 
   if (sort === "saves_week") {
-    const rows = await db
-      .select({
-        id: results.id,
-        title: results.title,
-        toolType: results.toolType,
-        teamName: teamSnapshots.name,
-        previewExcerpt: results.previewExcerpt,
-        viewCount: results.viewCount,
-        saveCount: results.saveCount,
-        createdAt: results.createdAt,
-        weeklySaves: sql<number>`count(${resultSaves.resultId})::int`,
-      })
-      .from(results)
-      .leftJoin(teamSnapshots, eq(results.teamSnapshotId, teamSnapshots.id))
-      .leftJoin(
-        resultSaves,
-        and(
-          eq(resultSaves.resultId, results.id),
-          gte(resultSaves.createdAt, sevenDaysAgo)
+    const rows = await applyPublicVisibility(
+      db
+        .selectFrom("results")
+        .leftJoin("team_snapshots", "team_snapshots.id", "results.team_snapshot_id")
+        .leftJoin("result_saves", (join) =>
+          join
+            .onRef("result_saves.result_id", "=", "results.id")
+            .on("result_saves.created_at", ">=", sql`now() - interval '7 days'`)
         )
-      )
-      .where(whereConditions)
-      .groupBy(results.id, teamSnapshots.name)
-      .orderBy(sql`count(${resultSaves.resultId}) DESC`)
-      .limit(limit);
+        .select([
+          "results.id",
+          "results.title",
+          "results.tool_type",
+          "team_snapshots.name as team_name",
+          "results.preview_excerpt",
+          "results.view_count",
+          "results.save_count",
+          "results.created_at",
+          sql<number>`count(result_saves.result_id)::int`.as("weekly_saves"),
+        ])
+    )
+      .groupBy(["results.id", "team_snapshots.name"])
+      .orderBy(sql`count(result_saves.result_id)`, "desc")
+      .limit(limit)
+      .execute();
 
     c.header("Cache-Control", "public, max-age=60");
-    return c.json(rows);
+    return c.json(
+      rows.map((r) => ({
+        id: r.id,
+        title: r.title,
+        toolType: r.tool_type,
+        teamName: r.team_name,
+        previewExcerpt: r.preview_excerpt,
+        viewCount: r.view_count,
+        saveCount: r.save_count,
+        createdAt: r.created_at,
+        weeklySaves: r.weekly_saves,
+      }))
+    );
   }
 
   // Default: recent
-  const rows = await db
-    .select({
-      id: results.id,
-      title: results.title,
-      toolType: results.toolType,
-      teamName: teamSnapshots.name,
-      previewExcerpt: results.previewExcerpt,
-      viewCount: results.viewCount,
-      saveCount: results.saveCount,
-      createdAt: results.createdAt,
-    })
-    .from(results)
-    .leftJoin(teamSnapshots, eq(results.teamSnapshotId, teamSnapshots.id))
-    .where(whereConditions)
-    .orderBy(sql`${results.createdAt} DESC`)
-    .limit(limit);
+  const rows = await applyPublicVisibility(
+    db
+      .selectFrom("results")
+      .leftJoin("team_snapshots", "team_snapshots.id", "results.team_snapshot_id")
+      .select([
+        "results.id",
+        "results.title",
+        "results.tool_type",
+        "team_snapshots.name as team_name",
+        "results.preview_excerpt",
+        "results.view_count",
+        "results.save_count",
+        "results.created_at",
+      ])
+  )
+    .orderBy("results.created_at", "desc")
+    .limit(limit)
+    .execute();
 
   c.header("Cache-Control", "public, max-age=60");
-  return c.json(rows);
+  return c.json(
+    rows.map((r) => ({
+      id: r.id,
+      title: r.title,
+      toolType: r.tool_type,
+      teamName: r.team_name,
+      previewExcerpt: r.preview_excerpt,
+      viewCount: r.view_count,
+      saveCount: r.save_count,
+      createdAt: r.created_at,
+    }))
+  );
 });
 
 // GET /public/search — hybrid search (lexical + semantic) with RRF
@@ -168,7 +193,7 @@ app.get("/search", async (c) => {
     // Build tsquery — fall back to ILIKE if tsquery fails
     const tsQuery = sql`plainto_tsquery('english', ${q})`;
 
-    let rows: Array<{
+    type SearchRow = {
       id: string;
       title: string;
       tool_type: string;
@@ -177,7 +202,7 @@ app.get("/search", async (c) => {
       view_count: number;
       save_count: number;
       created_at: string;
-    }>;
+    };
 
     // Dynamic ORDER BY — relevance uses RRF score / ts_rank, others re-sort the candidate set
     const searchOrderClause = {
@@ -187,10 +212,12 @@ app.get("/search", async (c) => {
       saves: sql`r.save_count DESC`,
     }[sort];
 
+    let rows: SearchRow[];
+
     if (queryEmbedding) {
       // Full hybrid: lexical + semantic + RRF
       const embeddingLiteral = `[${queryEmbedding.join(",")}]`;
-      rows = await db.execute(sql`
+      const result = await sql<SearchRow>`
         WITH lexical AS (
           SELECT r.id, ROW_NUMBER() OVER (ORDER BY ts_rank(r.search_vector, ${tsQuery}) DESC) AS rank_pos
           FROM results r
@@ -228,10 +255,11 @@ app.get("/search", async (c) => {
         ORDER BY ${searchOrderClause ?? sql`f.rrf_score DESC`}
         LIMIT ${limit}
         OFFSET ${offset}
-      `) as unknown as typeof rows;
+      `.execute(db);
+      rows = result.rows;
     } else {
       // Lexical-only fallback (embedding API failed)
-      rows = await db.execute(sql`
+      const result = await sql<SearchRow>`
         SELECT
           r.id,
           r.title,
@@ -251,7 +279,8 @@ app.get("/search", async (c) => {
         ORDER BY ${searchOrderClause ?? sql`CASE WHEN r.search_vector @@ ${tsQuery} THEN ts_rank(r.search_vector, ${tsQuery}) ELSE 0 END DESC`}
         LIMIT ${limit}
         OFFSET ${offset}
-      `) as unknown as typeof rows;
+      `.execute(db);
+      rows = result.rows;
     }
 
     c.header("Cache-Control", "public, max-age=30");
@@ -280,7 +309,16 @@ app.get("/search", async (c) => {
     saves: sql`r.save_count DESC`,
   }[sort];
 
-  const rows = await db.execute(sql`
+  const result = await sql<{
+    id: string;
+    title: string;
+    tool_type: string;
+    team_name: string | null;
+    preview_excerpt: string | null;
+    view_count: number;
+    save_count: number;
+    created_at: string;
+  }>`
     SELECT
       r.id,
       r.title,
@@ -296,16 +334,8 @@ app.get("/search", async (c) => {
     ORDER BY ${orderClause}
     LIMIT ${limit}
     OFFSET ${offset}
-  `) as unknown as Array<{
-    id: string;
-    title: string;
-    tool_type: string;
-    team_name: string | null;
-    preview_excerpt: string | null;
-    view_count: number;
-    save_count: number;
-    created_at: string;
-  }>;
+  `.execute(db);
+  const rows = result.rows;
 
   c.header("Cache-Control", "public, max-age=60");
   return c.json({
@@ -329,24 +359,25 @@ app.get("/results/:id", async (c) => {
   const resultId = c.req.param("id");
   const db = getDb();
 
-  const [row] = await db
-    .select({
-      id: results.id,
-      toolType: results.toolType,
-      title: results.title,
-      status: results.status,
-      isPrivate: results.isPrivate,
-      hiddenAt: results.hiddenAt,
-      moderationStatus: results.moderationStatus,
-      contentKey: results.contentKey,
-      shareImageKey: results.shareImageKey,
-      createdAt: results.createdAt,
-      teamName: teamSnapshots.name,
-      teamMembers: teamSnapshots.members,
-    })
-    .from(results)
-    .leftJoin(teamSnapshots, eq(results.teamSnapshotId, teamSnapshots.id))
-    .where(eq(results.id, resultId));
+  const row = await db
+    .selectFrom("results")
+    .leftJoin("team_snapshots", "team_snapshots.id", "results.team_snapshot_id")
+    .select([
+      "results.id",
+      "results.tool_type",
+      "results.title",
+      "results.status",
+      "results.is_private",
+      "results.hidden_at",
+      "results.moderation_status",
+      "results.content_key",
+      "results.share_image_key",
+      "results.created_at",
+      "team_snapshots.name as team_name",
+      "team_snapshots.members as team_members",
+    ])
+    .where("results.id", "=", resultId)
+    .executeTakeFirst();
 
   if (!row) {
     return c.json({ error: "Result not found" }, 404);
@@ -357,34 +388,34 @@ app.get("/results/:id", async (c) => {
   // via direct link. isPrivate only controls Explore/search visibility.
   if (
     row.status !== "completed" ||
-    row.toolType === "research" ||
-    row.hiddenAt !== null ||
-    row.moderationStatus !== "approved" ||
-    !row.contentKey
+    row.tool_type === "research" ||
+    row.hidden_at !== null ||
+    row.moderation_status !== "approved" ||
+    !row.content_key
   ) {
     return c.json({ error: "Result not available for public viewing" }, 404);
   }
 
   // Try public JSON first, fall back to full JSON
-  const publicKey = row.contentKey.replace(".json", ".public.json");
+  const publicKey = row.content_key.replace(".json", ".public.json");
   const hasPublicJson = await headObject(publicKey);
 
   const contentUrl = hasPublicJson
     ? await presignGetUrl(publicKey, 300)
-    : await presignGetUrl(row.contentKey, 300);
+    : await presignGetUrl(row.content_key, 300);
 
   c.header("Cache-Control", "public, max-age=60");
 
   return c.json({
     id: row.id,
-    toolType: row.toolType,
+    toolType: row.tool_type,
     title: row.title,
-    teamName: row.teamName,
-    teamMembers: row.teamMembers ?? [],
-    createdAt: row.createdAt,
+    teamName: row.team_name,
+    teamMembers: (row.team_members as any[]) ?? [],
+    createdAt: row.created_at,
     contentUrl,
     fullContent: !hasPublicJson,
-    shareImageUrl: row.shareImageKey ? publicAssetUrl(row.shareImageKey) : null,
+    shareImageUrl: row.share_image_key ? publicAssetUrl(row.share_image_key) : null,
   });
 });
 
@@ -393,26 +424,34 @@ app.get("/collections", async (c) => {
   const db = getDb();
 
   const rows = await db
-    .select({
-      id: collections.id,
-      title: collections.title,
-      subtitle: collections.subtitle,
-      description: collections.description,
-      slug: collections.slug,
-      resultCount: sql<number>`count(${collectionResults.resultId})::int`,
-    })
-    .from(collections)
-    .leftJoin(
-      collectionResults,
-      eq(collections.id, collectionResults.collectionId)
-    )
-    .where(eq(collections.status, "live"))
-    .groupBy(collections.id)
-    .orderBy(sql`${collections.position} ASC NULLS LAST`, asc(collections.createdAt));
+    .selectFrom("collections")
+    .leftJoin("collection_results", "collections.id", "collection_results.collection_id")
+    .select([
+      "collections.id",
+      "collections.title",
+      "collections.subtitle",
+      "collections.description",
+      "collections.slug",
+      sql<number>`count(collection_results.result_id)::int`.as("result_count"),
+    ])
+    .where("collections.status", "=", "live")
+    .groupBy("collections.id")
+    .orderBy(sql`collections.position ASC NULLS LAST`)
+    .orderBy("collections.created_at", "asc")
+    .execute();
 
   c.header("Cache-Control", "public, max-age=60");
 
-  return c.json(rows);
+  return c.json(
+    rows.map((r) => ({
+      id: r.id,
+      title: r.title,
+      subtitle: r.subtitle,
+      description: r.description,
+      slug: r.slug,
+      resultCount: r.result_count,
+    }))
+  );
 });
 
 export default app;

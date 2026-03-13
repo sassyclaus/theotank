@@ -1,6 +1,4 @@
-import { getDb, closeDb } from "./db";
-import { theologians, teams, teamMemberships } from "./schema";
-import { eq } from "drizzle-orm";
+import { getDb, closeDb } from "./kysely-db";
 import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -10,7 +8,7 @@ async function main() {
   const db = getDb();
 
   // Theologians — full SELECT *
-  const allTheologians = await db.select().from(theologians);
+  const allTheologians = await db.selectFrom('theologians').selectAll().execute();
   writeFileSync(
     resolve(SEED_DIR, "theologians.json"),
     JSON.stringify(allTheologians, null, 2),
@@ -19,9 +17,10 @@ async function main() {
 
   // Native teams only
   const nativeTeams = await db
-    .select()
-    .from(teams)
-    .where(eq(teams.isNative, true));
+    .selectFrom('teams')
+    .selectAll()
+    .where('is_native', '=', true)
+    .execute();
   writeFileSync(
     resolve(SEED_DIR, "teams.json"),
     JSON.stringify(nativeTeams, null, 2),
@@ -30,9 +29,9 @@ async function main() {
 
   // Memberships for native teams only
   const nativeTeamIds = new Set(nativeTeams.map((t) => t.id));
-  const allMemberships = await db.select().from(teamMemberships);
+  const allMemberships = await db.selectFrom('team_memberships').selectAll().execute();
   const nativeMemberships = allMemberships.filter((m) =>
-    nativeTeamIds.has(m.teamId),
+    nativeTeamIds.has(m.team_id),
   );
   writeFileSync(
     resolve(SEED_DIR, "team-memberships.json"),

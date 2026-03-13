@@ -1,18 +1,6 @@
 import { Hono } from "hono";
-import { getDb } from "@theotank/rds/db";
-import {
-  results,
-  resultTypes,
-  resultProgressLogs,
-  resultViews,
-  jobs,
-  teams,
-  teamMemberships,
-  teamSnapshots,
-  theologians,
-  reviewFiles,
-} from "@theotank/rds/schema";
-import { eq, and, desc, asc, isNull, sql } from "drizzle-orm";
+import { getDb } from "@theotank/rds";
+import { sql } from "kysely";
 import { presignGetUrl } from "../lib/s3";
 import { createSnapshot } from "../lib/team-helpers";
 import { checkAndRecordUsage, UsageLimitError } from "../lib/usage-limits";
@@ -49,16 +37,13 @@ app.post("/", async (c) => {
       return c.json({ error: "reviewFileId is required for review" }, 400);
     }
     const db = getDb();
-    const [file] = await db
-      .select()
-      .from(reviewFiles)
-      .where(
-        and(
-          eq(reviewFiles.id, body.reviewFileId),
-          eq(reviewFiles.userId, userId),
-          eq(reviewFiles.status, "ready")
-        )
-      );
+    const file = await db
+      .selectFrom("review_files")
+      .selectAll()
+      .where("id", "=", body.reviewFileId)
+      .where("user_id", "=", userId)
+      .where("status", "=", "ready")
+      .executeTakeFirst();
     if (!file) {
       return c.json(
         { error: "Review file not found or not ready" },
@@ -73,15 +58,12 @@ app.post("/", async (c) => {
       return c.json({ error: "theologianId and question are required for research" }, 400);
     }
     const db = getDb();
-    const [theo] = await db
-      .select()
-      .from(theologians)
-      .where(
-        and(
-          eq(theologians.id, body.theologianId),
-          eq(theologians.hasResearch, true)
-        )
-      );
+    const theo = await db
+      .selectFrom("theologians")
+      .selectAll()
+      .where("id", "=", body.theologianId)
+      .where("has_research", "=", true)
+      .executeTakeFirst();
     if (!theo) {
       return c.json({ error: "Theologian not found or research not available" }, 400);
     }
@@ -96,15 +78,15 @@ app.post("/", async (c) => {
 
   let result;
   try {
-    result = await db.transaction(async (tx) => {
+    result = await db.transaction().execute(async (trx) => {
       // Look up active result type
       // For super_poll, look up the super_poll result type
-      const [resultType] = await tx
-        .select()
-        .from(resultTypes)
-        .where(
-          and(eq(resultTypes.kind, body.toolType), eq(resultTypes.isActive, true))
-        );
+      const resultType = await trx
+        .selectFrom("result_types")
+        .selectAll()
+        .where("kind", "=", body.toolType)
+        .where("is_active", "=", true)
+        .executeTakeFirst();
       if (!resultType) {
         throw new Error(`No active result type for ${body.toolType}`);
       }
@@ -114,58 +96,57 @@ app.post("/", async (c) => {
         const inputPayload = { question: body.question };
         const title = body.question;
 
-        const [resultRow] = await tx
-          .insert(results)
+        const resultRow = await trx
+          .insertInto("results")
           .values({
             id: resultId,
-            userId,
-            toolType: body.toolType,
+            user_id: userId,
+            tool_type: body.toolType,
             title,
-            inputPayload,
-            theologianId: body.theologianId,
-            isPrivate: true,
-            resultTypeId: resultType.id,
+            input_payload: JSON.stringify(inputPayload),
+            theologian_id: body.theologianId,
+            is_private: true,
+            result_type_id: resultType.id,
             status: "pending",
           })
-          .returning();
+          .returningAll()
+          .executeTakeFirstOrThrow();
 
         // Check and record usage (after result insert so FK is satisfied; rolls back on limit error)
-        await checkAndRecordUsage(tx, internalUserId, body.toolType, resultId);
+        await checkAndRecordUsage(trx, internalUserId, body.toolType, resultId);
 
-        const [jobRow] = await tx
-          .insert(jobs)
+        const jobRow = await trx
+          .insertInto("jobs")
           .values({
             type: body.toolType,
-            payload: { resultId: resultRow.id },
+            payload: JSON.stringify({ resultId: resultRow.id }),
           })
-          .returning();
+          .returningAll()
+          .executeTakeFirstOrThrow();
 
-        await tx
-          .update(results)
-          .set({ jobId: jobRow.id })
-          .where(eq(results.id, resultRow.id));
+        await trx
+          .updateTable("results")
+          .set({ job_id: jobRow.id })
+          .where("id", "=", resultRow.id)
+          .execute();
 
         return {
           id: resultRow.id,
           jobId: jobRow.id,
           status: resultRow.status,
-          toolType: resultRow.toolType,
+          toolType: resultRow.tool_type,
           title: resultRow.title,
-          createdAt: resultRow.createdAt,
+          createdAt: resultRow.created_at,
         };
       }
 
       // Super-poll: fetch all theologians, create snapshot
       if (body.toolType === "super_poll") {
-        const allTheologians = await tx
-          .select({
-            theologianId: theologians.id,
-            name: theologians.name,
-            initials: theologians.initials,
-            tradition: theologians.tradition,
-          })
-          .from(theologians)
-          .orderBy(asc(theologians.name));
+        const allTheologians = await trx
+          .selectFrom("theologians")
+          .select(["id", "name", "initials", "tradition"])
+          .orderBy("name", "asc")
+          .execute();
 
         const teamSize = allTheologians.length;
 
@@ -176,103 +157,122 @@ app.post("/", async (c) => {
         // Use unique version per result to avoid unique constraint conflicts
         const snapshotVersion = Date.now();
         const snapshotId = crypto.randomUUID();
-        await tx
-          .insert(teamSnapshots)
+
+        const members = allTheologians.map((t) => ({
+          theologianId: t.id,
+          name: t.name,
+          initials: t.initials,
+          tradition: t.tradition,
+        }));
+
+        await trx
+          .insertInto("team_snapshots")
           .values({
             id: snapshotId,
-            teamId: SUPER_POLL_TEAM_ID,
+            team_id: SUPER_POLL_TEAM_ID,
             version: snapshotVersion,
             name: "All Platform Theologians",
             description: `Platform-wide poll across ${teamSize} theologians`,
-            members: allTheologians,
-          });
+            members: JSON.stringify(members),
+          })
+          .execute();
 
-        const [resultRow] = await tx
-          .insert(results)
+        const resultRow = await trx
+          .insertInto("results")
           .values({
             id: resultId,
-            userId,
-            toolType: body.toolType,
+            user_id: userId,
+            tool_type: body.toolType,
             title,
-            inputPayload,
-            teamSnapshotId: snapshotId,
-            resultTypeId: resultType.id,
+            input_payload: JSON.stringify(inputPayload),
+            team_snapshot_id: snapshotId,
+            result_type_id: resultType.id,
             status: "pending",
           })
-          .returning();
+          .returningAll()
+          .executeTakeFirstOrThrow();
 
         // Check and record usage (after result insert so FK is satisfied; rolls back on limit error)
-        await checkAndRecordUsage(tx, internalUserId, body.toolType, resultId, teamSize);
+        await checkAndRecordUsage(trx, internalUserId, body.toolType, resultId, teamSize);
 
-        const [jobRow] = await tx
-          .insert(jobs)
+        const jobRow = await trx
+          .insertInto("jobs")
           .values({
             type: "super_poll",
-            payload: { resultId: resultRow.id },
+            payload: JSON.stringify({ resultId: resultRow.id }),
           })
-          .returning();
+          .returningAll()
+          .executeTakeFirstOrThrow();
 
-        await tx
-          .update(results)
-          .set({ jobId: jobRow.id })
-          .where(eq(results.id, resultRow.id));
+        await trx
+          .updateTable("results")
+          .set({ job_id: jobRow.id })
+          .where("id", "=", resultRow.id)
+          .execute();
 
         return {
           id: resultRow.id,
           jobId: jobRow.id,
           status: resultRow.status,
-          toolType: resultRow.toolType,
+          toolType: resultRow.tool_type,
           title: resultRow.title,
-          createdAt: resultRow.createdAt,
+          createdAt: resultRow.created_at,
         };
       }
 
       // Team-based tools (ask, poll, review)
       // Look up the team
-      const [team] = await tx.select().from(teams).where(eq(teams.id, body.teamId));
+      const team = await trx
+        .selectFrom("teams")
+        .selectAll()
+        .where("id", "=", body.teamId)
+        .executeTakeFirst();
       if (!team) {
         throw new Error("Team not found");
       }
 
       // Create/reuse team snapshot for current version
-      const memberRows = await tx
-        .select({
-          theologianId: theologians.id,
-          name: theologians.name,
-          initials: theologians.initials,
-          tradition: theologians.tradition,
-        })
-        .from(teamMemberships)
-        .innerJoin(
-          theologians,
-          eq(teamMemberships.theologianId, theologians.id)
-        )
-        .where(eq(teamMemberships.teamId, team.id))
-        .orderBy(asc(theologians.name));
+      const memberRows = await trx
+        .selectFrom("team_memberships")
+        .innerJoin("theologians", "theologians.id", "team_memberships.theologian_id")
+        .select([
+          "theologians.id as theologian_id",
+          "theologians.name",
+          "theologians.initials",
+          "theologians.tradition",
+        ])
+        .where("team_memberships.team_id", "=", team.id)
+        .orderBy("theologians.name", "asc")
+        .execute();
 
       const teamSize = memberRows.length;
 
-      await tx
-        .insert(teamSnapshots)
+      const members = memberRows.map((r) => ({
+        theologianId: r.theologian_id,
+        name: r.name,
+        initials: r.initials,
+        tradition: r.tradition,
+      }));
+
+      await trx
+        .insertInto("team_snapshots")
         .values({
-          teamId: team.id,
+          team_id: team.id,
           version: team.version,
           name: team.name,
           description: team.description,
-          members: memberRows,
+          members: JSON.stringify(members),
         })
-        .onConflictDoNothing();
+        .onConflict((oc) => oc.columns(["team_id", "version"]).doNothing())
+        .execute();
 
       // Look up the snapshot (may have been pre-existing)
-      const [snapshot] = await tx
-        .select()
-        .from(teamSnapshots)
-        .where(
-          and(
-            eq(teamSnapshots.teamId, team.id),
-            eq(teamSnapshots.version, team.version)
-          )
-        );
+      const snapshot = await trx
+        .selectFrom("team_snapshots")
+        .selectAll()
+        .where("team_id", "=", team.id)
+        .where("version", "=", team.version)
+        .executeTakeFirstOrThrow();
 
       // Build input payload and title based on tool type
       let inputPayload: Record<string, unknown>;
@@ -286,10 +286,11 @@ app.post("/", async (c) => {
         };
         // Use custom title if provided, else fall back to review file label
         const db2 = getDb();
-        const [file] = await db2
-          .select({ label: reviewFiles.label })
-          .from(reviewFiles)
-          .where(eq(reviewFiles.id, body.reviewFileId));
+        const file = await db2
+          .selectFrom("review_files")
+          .select("label")
+          .where("id", "=", body.reviewFileId)
+          .executeTakeFirst();
         title = body.title?.trim() || `Review: ${file?.label ?? "Untitled"}`;
       } else if (body.toolType === "poll") {
         inputPayload = { question: body.question, options: body.options };
@@ -300,47 +301,50 @@ app.post("/", async (c) => {
       }
 
       // Insert result row
-      const [resultRow] = await tx
-        .insert(results)
+      const resultRow = await trx
+        .insertInto("results")
         .values({
           id: resultId,
-          userId,
-          toolType: body.toolType,
+          user_id: userId,
+          tool_type: body.toolType,
           title,
-          inputPayload,
-          teamSnapshotId: snapshot.id,
-          reviewFileId: body.toolType === "review" ? body.reviewFileId : undefined,
-          isPrivate: body.toolType === "review" ? true : undefined,
-          resultTypeId: resultType.id,
+          input_payload: JSON.stringify(inputPayload),
+          team_snapshot_id: snapshot.id,
+          review_file_id: body.toolType === "review" ? body.reviewFileId : undefined,
+          is_private: body.toolType === "review" ? true : undefined,
+          result_type_id: resultType.id,
           status: "pending",
         })
-        .returning();
+        .returningAll()
+        .executeTakeFirstOrThrow();
 
       // Check and record usage (after result insert so FK is satisfied; rolls back on limit error)
-      await checkAndRecordUsage(tx, internalUserId, body.toolType, resultId, teamSize);
+      await checkAndRecordUsage(trx, internalUserId, body.toolType, resultId, teamSize);
 
       // Insert job row
-      const [jobRow] = await tx
-        .insert(jobs)
+      const jobRow = await trx
+        .insertInto("jobs")
         .values({
           type: body.toolType,
-          payload: { resultId: resultRow.id },
+          payload: JSON.stringify({ resultId: resultRow.id }),
         })
-        .returning();
+        .returningAll()
+        .executeTakeFirstOrThrow();
 
       // Update result with jobId
-      await tx
-        .update(results)
-        .set({ jobId: jobRow.id })
-        .where(eq(results.id, resultRow.id));
+      await trx
+        .updateTable("results")
+        .set({ job_id: jobRow.id })
+        .where("id", "=", resultRow.id)
+        .execute();
 
       return {
         id: resultRow.id,
         jobId: jobRow.id,
         status: resultRow.status,
-        toolType: resultRow.toolType,
+        toolType: resultRow.tool_type,
         title: resultRow.title,
-        createdAt: resultRow.createdAt,
+        createdAt: resultRow.created_at,
       };
     });
   } catch (err) {
@@ -374,24 +378,26 @@ app.get("/", async (c) => {
   const db = getDb();
 
   const rows = await db
-    .select({
-      id: results.id,
-      toolType: results.toolType,
-      title: results.title,
-      status: results.status,
-      previewData: results.previewData,
-      previewExcerpt: results.previewExcerpt,
-      pdfKey: results.pdfKey,
-      createdAt: results.createdAt,
-      completedAt: results.completedAt,
-      teamName: teamSnapshots.name,
-      theologianName: theologians.name,
-    })
-    .from(results)
-    .leftJoin(teamSnapshots, eq(results.teamSnapshotId, teamSnapshots.id))
-    .leftJoin(theologians, eq(results.theologianId, theologians.id))
-    .where(and(eq(results.userId, userId), isNull(results.hiddenAt)))
-    .orderBy(desc(results.createdAt));
+    .selectFrom("results")
+    .leftJoin("team_snapshots", "team_snapshots.id", "results.team_snapshot_id")
+    .leftJoin("theologians", "theologians.id", "results.theologian_id")
+    .select([
+      "results.id",
+      "results.tool_type",
+      "results.title",
+      "results.status",
+      "results.preview_data",
+      "results.preview_excerpt",
+      "results.pdf_key",
+      "results.created_at",
+      "results.completed_at",
+      "team_snapshots.name as team_name",
+      "theologians.name as theologian_name",
+    ])
+    .where("results.user_id", "=", userId)
+    .where("results.hidden_at", "is", null)
+    .orderBy("results.created_at", "desc")
+    .execute();
 
   return c.json(rows);
 });
@@ -402,52 +408,55 @@ app.get("/:id", async (c) => {
   const resultId = c.req.param("id");
   const db = getDb();
 
-  const [row] = await db
-    .select({
-      id: results.id,
-      userId: results.userId,
-      toolType: results.toolType,
-      title: results.title,
-      status: results.status,
-      inputPayload: results.inputPayload,
-      previewData: results.previewData,
-      previewExcerpt: results.previewExcerpt,
-      contentKey: results.contentKey,
-      pdfKey: results.pdfKey,
-      isPrivate: results.isPrivate,
-      models: results.models,
-      errorMessage: results.errorMessage,
-      createdAt: results.createdAt,
-      completedAt: results.completedAt,
-      teamName: teamSnapshots.name,
-      teamMembers: teamSnapshots.members,
-      theologianName: theologians.name,
-      theologianSlug: theologians.slug,
-    })
-    .from(results)
-    .leftJoin(teamSnapshots, eq(results.teamSnapshotId, teamSnapshots.id))
-    .leftJoin(theologians, eq(results.theologianId, theologians.id))
-    .where(eq(results.id, resultId));
+  const row = await db
+    .selectFrom("results")
+    .leftJoin("team_snapshots", "team_snapshots.id", "results.team_snapshot_id")
+    .leftJoin("theologians", "theologians.id", "results.theologian_id")
+    .select([
+      "results.id",
+      "results.user_id",
+      "results.tool_type",
+      "results.title",
+      "results.status",
+      "results.input_payload",
+      "results.preview_data",
+      "results.preview_excerpt",
+      "results.content_key",
+      "results.pdf_key",
+      "results.is_private",
+      "results.models",
+      "results.error_message",
+      "results.created_at",
+      "results.completed_at",
+      "team_snapshots.name as team_name",
+      "team_snapshots.members as team_members",
+      "theologians.name as theologian_name",
+      "theologians.slug as theologian_slug",
+    ])
+    .where("results.id", "=", resultId)
+    .executeTakeFirst();
 
   if (!row) {
     return c.json({ error: "Result not found" }, 404);
   }
 
   const contentUrl =
-    row.status === "completed" && row.contentKey
-      ? await presignGetUrl(row.contentKey, 300)
+    row.status === "completed" && row.content_key
+      ? await presignGetUrl(row.content_key, 300)
       : null;
 
   // Increment view count + insert view event (fire-and-forget)
   if (row.status === "completed") {
-    db.update(results)
-      .set({ viewCount: sql`${results.viewCount} + 1` })
-      .where(eq(results.id, resultId))
+    db.updateTable("results")
+      .set({ view_count: sql`view_count + 1` })
+      .where("id", "=", resultId)
+      .execute()
       .then(() => {})
       .catch(() => {});
 
-    db.insert(resultViews)
-      .values({ resultId })
+    db.insertInto("result_views")
+      .values({ result_id: resultId })
+      .execute()
       .then(() => {})
       .catch(() => {});
   }
@@ -462,10 +471,12 @@ app.post("/:id/retry", async (c) => {
   const db = getDb();
 
   // Load original result
-  const [original] = await db
-    .select()
-    .from(results)
-    .where(and(eq(results.id, resultId), eq(results.userId, userId)));
+  const original = await db
+    .selectFrom("results")
+    .selectAll()
+    .where("id", "=", resultId)
+    .where("user_id", "=", userId)
+    .executeTakeFirst();
 
   if (!original) {
     return c.json({ error: "Result not found" }, 404);
@@ -474,51 +485,55 @@ app.post("/:id/retry", async (c) => {
     return c.json({ error: "Only failed results can be retried" }, 400);
   }
 
-  const newResult = await db.transaction(async (tx) => {
+  const newResult = await db.transaction().execute(async (trx) => {
     // Hide the original result
-    await tx
-      .update(results)
-      .set({ hiddenAt: new Date(), updatedAt: new Date() })
-      .where(eq(results.id, resultId));
+    await trx
+      .updateTable("results")
+      .set({ hidden_at: new Date(), updated_at: new Date() })
+      .where("id", "=", resultId)
+      .execute();
 
     // Insert new result row, copying from original
-    const [resultRow] = await tx
-      .insert(results)
+    const resultRow = await trx
+      .insertInto("results")
       .values({
-        userId,
-        toolType: original.toolType,
+        user_id: userId,
+        tool_type: original.tool_type,
         title: original.title,
-        inputPayload: original.inputPayload,
-        teamSnapshotId: original.teamSnapshotId,
-        theologianId: original.theologianId,
-        reviewFileId: original.reviewFileId,
-        resultTypeId: original.resultTypeId,
-        retriedFromId: original.id,
+        input_payload: JSON.stringify(original.input_payload),
+        team_snapshot_id: original.team_snapshot_id,
+        theologian_id: original.theologian_id,
+        review_file_id: original.review_file_id,
+        result_type_id: original.result_type_id,
+        retried_from_id: original.id,
         status: "pending",
       })
-      .returning();
+      .returningAll()
+      .executeTakeFirstOrThrow();
 
     // Insert job row
-    const [jobRow] = await tx
-      .insert(jobs)
+    const jobRow = await trx
+      .insertInto("jobs")
       .values({
-        type: original.toolType,
-        payload: { resultId: resultRow.id },
+        type: original.tool_type,
+        payload: JSON.stringify({ resultId: resultRow.id }),
       })
-      .returning();
+      .returningAll()
+      .executeTakeFirstOrThrow();
 
     // Update result with jobId
-    await tx
-      .update(results)
-      .set({ jobId: jobRow.id })
-      .where(eq(results.id, resultRow.id));
+    await trx
+      .updateTable("results")
+      .set({ job_id: jobRow.id })
+      .where("id", "=", resultRow.id)
+      .execute();
 
     return {
       id: resultRow.id,
       status: resultRow.status,
-      toolType: resultRow.toolType,
+      toolType: resultRow.tool_type,
       title: resultRow.title,
-      createdAt: resultRow.createdAt,
+      createdAt: resultRow.created_at,
     };
   });
 
@@ -531,10 +546,11 @@ app.get("/:id/progress", async (c) => {
   const db = getDb();
 
   const logs = await db
-    .select()
-    .from(resultProgressLogs)
-    .where(eq(resultProgressLogs.resultId, resultId))
-    .orderBy(asc(resultProgressLogs.createdAt));
+    .selectFrom("result_progress_logs")
+    .selectAll()
+    .where("result_id", "=", resultId)
+    .orderBy("created_at", "asc")
+    .execute();
 
   return c.json(logs);
 });
@@ -545,10 +561,12 @@ app.post("/:id/pdf", async (c) => {
   const resultId = c.req.param("id");
   const db = getDb();
 
-  const [result] = await db
-    .select()
-    .from(results)
-    .where(and(eq(results.id, resultId), eq(results.userId, userId)));
+  const result = await db
+    .selectFrom("results")
+    .selectAll()
+    .where("id", "=", resultId)
+    .where("user_id", "=", userId)
+    .executeTakeFirst();
 
   if (!result) {
     return c.json({ error: "Result not found" }, 404);
@@ -558,16 +576,17 @@ app.post("/:id/pdf", async (c) => {
   }
 
   // Already has PDF
-  if (result.pdfKey) {
-    return c.json({ status: "completed", pdfKey: result.pdfKey });
+  if (result.pdf_key) {
+    return c.json({ status: "completed", pdfKey: result.pdf_key });
   }
 
   // PDF job in progress — check if it's still active
-  if (result.pdfJobId) {
-    const [existingJob] = await db
-      .select()
-      .from(jobs)
-      .where(eq(jobs.id, result.pdfJobId));
+  if (result.pdf_job_id) {
+    const existingJob = await db
+      .selectFrom("jobs")
+      .selectAll()
+      .where("id", "=", result.pdf_job_id)
+      .executeTakeFirst();
 
     if (existingJob && (existingJob.status === "pending" || existingJob.status === "processing")) {
       return c.json({ status: existingJob.status, pdfJobId: existingJob.id });
@@ -576,19 +595,21 @@ app.post("/:id/pdf", async (c) => {
   }
 
   // Create new PDF job in transaction
-  const newJob = await db.transaction(async (tx) => {
-    const [jobRow] = await tx
-      .insert(jobs)
+  const newJob = await db.transaction().execute(async (trx) => {
+    const jobRow = await trx
+      .insertInto("jobs")
       .values({
         type: "pdf",
-        payload: { resultId },
+        payload: JSON.stringify({ resultId }),
       })
-      .returning();
+      .returningAll()
+      .executeTakeFirstOrThrow();
 
-    await tx
-      .update(results)
-      .set({ pdfJobId: jobRow.id, updatedAt: new Date() })
-      .where(eq(results.id, resultId));
+    await trx
+      .updateTable("results")
+      .set({ pdf_job_id: jobRow.id, updated_at: new Date() })
+      .where("id", "=", resultId)
+      .execute();
 
     return jobRow;
   });
@@ -602,36 +623,34 @@ app.get("/:id/pdf/status", async (c) => {
   const resultId = c.req.param("id");
   const db = getDb();
 
-  const [result] = await db
-    .select({
-      pdfKey: results.pdfKey,
-      pdfJobId: results.pdfJobId,
-      userId: results.userId,
-    })
-    .from(results)
-    .where(eq(results.id, resultId));
+  const result = await db
+    .selectFrom("results")
+    .select(["pdf_key", "pdf_job_id", "user_id"])
+    .where("id", "=", resultId)
+    .executeTakeFirst();
 
   if (!result) {
     return c.json({ error: "Result not found" }, 404);
   }
-  if (result.userId !== userId) {
+  if (result.user_id !== userId) {
     return c.json({ error: "Not authorized" }, 403);
   }
 
-  if (result.pdfKey) {
-    return c.json({ status: "completed", pdfKey: result.pdfKey });
+  if (result.pdf_key) {
+    return c.json({ status: "completed", pdfKey: result.pdf_key });
   }
 
-  if (result.pdfJobId) {
-    const [job] = await db
-      .select({ status: jobs.status, errorMessage: jobs.errorMessage })
-      .from(jobs)
-      .where(eq(jobs.id, result.pdfJobId));
+  if (result.pdf_job_id) {
+    const job = await db
+      .selectFrom("jobs")
+      .select(["status", "error_message"])
+      .where("id", "=", result.pdf_job_id)
+      .executeTakeFirst();
 
     if (job) {
       return c.json({
         status: job.status,
-        ...(job.errorMessage && { errorMessage: job.errorMessage }),
+        ...(job.error_message && { errorMessage: job.error_message }),
       });
     }
   }
@@ -645,23 +664,19 @@ app.get("/:id/pdf/download", async (c) => {
   const resultId = c.req.param("id");
   const db = getDb();
 
-  const [result] = await db
-    .select({
-      pdfKey: results.pdfKey,
-      title: results.title,
-      toolType: results.toolType,
-      userId: results.userId,
-    })
-    .from(results)
-    .where(eq(results.id, resultId));
+  const result = await db
+    .selectFrom("results")
+    .select(["pdf_key", "title", "tool_type", "user_id"])
+    .where("id", "=", resultId)
+    .executeTakeFirst();
 
   if (!result) {
     return c.json({ error: "Result not found" }, 404);
   }
-  if (result.userId !== userId) {
+  if (result.user_id !== userId) {
     return c.json({ error: "Not authorized" }, 403);
   }
-  if (!result.pdfKey) {
+  if (!result.pdf_key) {
     return c.json({ error: "PDF not available" }, 404);
   }
 
@@ -670,8 +685,8 @@ app.get("/:id/pdf/download", async (c) => {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "")
     .slice(0, 60);
-  const filename = `theotank-${result.toolType}-${slug}.pdf`;
-  const url = await presignGetUrl(result.pdfKey, 300, filename);
+  const filename = `theotank-${result.tool_type}-${slug}.pdf`;
+  const url = await presignGetUrl(result.pdf_key, 300, filename);
 
   return c.json({ url, filename });
 });
@@ -683,15 +698,16 @@ app.patch("/:id/visibility", async (c) => {
   const body = await c.req.json<{ isPrivate: boolean }>();
   const db = getDb();
 
-  const [result] = await db
-    .select({ userId: results.userId, status: results.status })
-    .from(results)
-    .where(eq(results.id, resultId));
+  const result = await db
+    .selectFrom("results")
+    .select(["user_id", "status"])
+    .where("id", "=", resultId)
+    .executeTakeFirst();
 
   if (!result) {
     return c.json({ error: "Result not found" }, 404);
   }
-  if (result.userId !== userId) {
+  if (result.user_id !== userId) {
     return c.json({ error: "Not authorized" }, 403);
   }
   if (result.status !== "completed") {
@@ -699,9 +715,10 @@ app.patch("/:id/visibility", async (c) => {
   }
 
   await db
-    .update(results)
-    .set({ isPrivate: body.isPrivate, updatedAt: new Date() })
-    .where(eq(results.id, resultId));
+    .updateTable("results")
+    .set({ is_private: body.isPrivate, updated_at: new Date() })
+    .where("id", "=", resultId)
+    .execute();
 
   return c.json({ isPrivate: body.isPrivate });
 });
@@ -712,38 +729,33 @@ app.get("/:id/source-text", async (c) => {
   const resultId = c.req.param("id");
   const db = getDb();
 
-  const [result] = await db
-    .select({
-      userId: results.userId,
-      toolType: results.toolType,
-      reviewFileId: results.reviewFileId,
-    })
-    .from(results)
-    .where(eq(results.id, resultId));
+  const result = await db
+    .selectFrom("results")
+    .select(["user_id", "tool_type", "review_file_id"])
+    .where("id", "=", resultId)
+    .executeTakeFirst();
 
   if (!result) {
     return c.json({ error: "Result not found" }, 404);
   }
-  if (result.userId !== userId) {
+  if (result.user_id !== userId) {
     return c.json({ error: "Not authorized" }, 403);
   }
-  if (result.toolType !== "review" || !result.reviewFileId) {
+  if (result.tool_type !== "review" || !result.review_file_id) {
     return c.json({ error: "Source text only available for review results" }, 400);
   }
 
-  const [file] = await db
-    .select({
-      textStorageKey: reviewFiles.textStorageKey,
-      label: reviewFiles.label,
-    })
-    .from(reviewFiles)
-    .where(eq(reviewFiles.id, result.reviewFileId));
+  const file = await db
+    .selectFrom("review_files")
+    .select(["text_storage_key", "label"])
+    .where("id", "=", result.review_file_id)
+    .executeTakeFirst();
 
-  if (!file || !file.textStorageKey) {
+  if (!file || !file.text_storage_key) {
     return c.json({ error: "Source text not available" }, 404);
   }
 
-  const url = await presignGetUrl(file.textStorageKey, 300);
+  const url = await presignGetUrl(file.text_storage_key, 300);
   return c.json({ url, label: file.label });
 });
 

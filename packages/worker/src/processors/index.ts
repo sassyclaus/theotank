@@ -1,4 +1,5 @@
-import type { Job } from "@theotank/rds/schema";
+import type { Selectable } from "kysely";
+import type { Jobs } from "@theotank/rds";
 import { completeJob, failJob } from "../queue";
 import { logger, type Logger } from "../lib/logger";
 import { processAsk } from "./ask";
@@ -8,6 +9,8 @@ import { processReview } from "./review";
 import { processResearch } from "./research";
 import { processSuperPoll } from "./super-poll";
 import { processPdf } from "./pdf";
+
+type Job = Selectable<Jobs>;
 
 const processors: Record<string, (job: Job, log: Logger) => Promise<void>> = {
   ask: processAsk,

@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { config, validateConfig } from "./config";
 import { registerJob, getJobStatuses, stopAll } from "./scheduler";
-import { closeDb } from "@theotank/rds/db";
+import { closeDb } from "@theotank/rds";
 import { logger } from "./lib/logger";
 
 // Jobs

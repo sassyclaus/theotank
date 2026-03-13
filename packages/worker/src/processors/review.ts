@@ -1,12 +1,8 @@
-import { getDb } from "@theotank/rds/db";
-import {
-  results,
-  teamSnapshots,
-  theologians,
-  reviewFiles,
-} from "@theotank/rds/schema";
-import { eq } from "drizzle-orm";
-import type { Job } from "@theotank/rds/schema";
+import { getDb } from "@theotank/rds";
+import type { Selectable } from "kysely";
+import type { Jobs } from "@theotank/rds";
+
+type Job = Selectable<Jobs>;
 import { ai } from "../lib/openai";
 import { logProgress } from "../progress";
 import { downloadBuffer, uploadJson } from "../s3";
@@ -45,30 +41,31 @@ export const processReview = withResultContext("review", async (job: Job, ctx: R
 
   const attribution = {
     result_id: resultId,
-    user_id: result.userId,
+    user_id: result.user_id,
     tool_type: "review",
   };
 
   const algoConfig = rawConfig as ReviewAlgoConfig;
 
   // Load review file and its extracted text
-  const inputPayload = result.inputPayload as {
+  const inputPayload = result.input_payload as {
     reviewFileId: string;
     focusPrompt: string | null;
     description: string | null;
   };
 
-  const [reviewFile] = await db
-    .select()
-    .from(reviewFiles)
-    .where(eq(reviewFiles.id, inputPayload.reviewFileId));
+  const reviewFile = await db
+    .selectFrom('review_files')
+    .selectAll()
+    .where('id', '=', inputPayload.reviewFileId)
+    .executeTakeFirst();
 
-  if (!reviewFile || reviewFile.status !== "ready" || !reviewFile.textStorageKey) {
+  if (!reviewFile || reviewFile.status !== "ready" || !reviewFile.text_storage_key) {
     await failBoth(resultId, job.id, "Review file not ready or not found");
     return;
   }
 
-  const textBuffer = await downloadBuffer(reviewFile.textStorageKey);
+  const textBuffer = await downloadBuffer(reviewFile.text_storage_key);
   const fullReviewText = textBuffer.toString("utf-8");
 
   const MAX_REVIEW_CHARS = 48_000;
@@ -84,15 +81,16 @@ export const processReview = withResultContext("review", async (job: Job, ctx: R
   }
 
   // Load team snapshot → theologian details
-  if (!result.teamSnapshotId) {
+  if (!result.team_snapshot_id) {
     await failBoth(resultId, job.id, "No team snapshot linked to result");
     return;
   }
 
-  const [snapshot] = await db
-    .select()
-    .from(teamSnapshots)
-    .where(eq(teamSnapshots.id, result.teamSnapshotId));
+  const snapshot = await db
+    .selectFrom('team_snapshots')
+    .selectAll()
+    .where('id', '=', result.team_snapshot_id)
+    .executeTakeFirst();
   if (!snapshot) {
     await failBoth(resultId, job.id, "Team snapshot not found");
     return;
@@ -107,10 +105,11 @@ export const processReview = withResultContext("review", async (job: Job, ctx: R
 
   const theologianRows = await Promise.all(
     members.map(async (m) => {
-      const [t] = await db
-        .select()
-        .from(theologians)
-        .where(eq(theologians.id, m.theologianId));
+      const t = await db
+        .selectFrom('theologians')
+        .selectAll()
+        .where('id', '=', m.theologianId)
+        .executeTakeFirst();
       return t;
     })
   );
@@ -149,7 +148,7 @@ export const processReview = withResultContext("review", async (job: Job, ctx: R
                   born: t.born,
                   died: t.died,
                   bio: t.bio,
-                  voiceStyle: t.voiceStyle,
+                  voiceStyle: t.voice_style,
                   tradition: t.tradition,
                 }),
               },
@@ -369,23 +368,24 @@ export const processReview = withResultContext("review", async (job: Job, ctx: R
   await logProgress(resultId, "Your review is ready!");
 
   await db
-    .update(results)
+    .updateTable('results')
     .set({
       status: "completed",
-      contentKey,
-      shareImageKey,
-      previewData: {
+      content_key: contentKey,
+      share_image_key: shareImageKey,
+      preview_data: JSON.stringify({
         type: "review",
         overallGrade: synthesis.overall_grade,
-      },
-      previewExcerpt,
-      models: {
+      }),
+      preview_excerpt: previewExcerpt,
+      models: JSON.stringify({
         review: reviewModel,
         critique: critiqueModel,
         synthesis: synthesisModel,
-      },
-      completedAt: now,
-      updatedAt: now,
+      }),
+      completed_at: now,
+      updated_at: now,
     })
-    .where(eq(results.id, resultId));
+    .where('id', '=', resultId)
+    .execute();
 });

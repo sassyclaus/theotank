@@ -1,7 +1,6 @@
 import { Hono } from "hono";
-import { getDb } from "@theotank/rds/db";
-import { waitlistSignups } from "@theotank/rds/schema";
-import { eq, desc, asc, sql, and, like } from "drizzle-orm";
+import { getDb } from "@theotank/rds";
+import { sql } from "kysely";
 import type { AppEnv } from "../../lib/types";
 
 const app = new Hono<AppEnv>();
@@ -19,55 +18,28 @@ app.get("/", async (c) => {
     c.req.query("sort") === "queuePosition" ? "queuePosition" : "createdAt";
   const order = c.req.query("order") === "asc" ? "asc" : "desc";
 
-  // Build filter conditions
-  const conditions = [];
-  if (search) conditions.push(like(waitlistSignups.email, `%${search}%`));
-  if (surveyKey && surveyValue)
-    conditions.push(sql`${waitlistSignups.surveyResponses}->>${surveyKey} = ${surveyValue}`);
-  if (emailConfirmed === "true")
-    conditions.push(eq(waitlistSignups.emailConfirmed, true));
-  if (emailConfirmed === "false")
-    conditions.push(eq(waitlistSignups.emailConfirmed, false));
-
-  const where = conditions.length > 0 ? and(...conditions) : undefined;
-
   // Stats — always computed across ALL signups (unfiltered)
-  const now24h = sql`now() - interval '24 hours'`;
-  const now7d = sql`now() - interval '7 days'`;
-  const [stats] = await db
-    .select({
-      total: sql<number>`count(*)`.mapWith(Number),
-      confirmed:
-        sql<number>`count(*) filter (where ${waitlistSignups.emailConfirmed} = true)`.mapWith(
-          Number,
-        ),
-      today:
-        sql<number>`count(*) filter (where ${waitlistSignups.createdAt} >= ${now24h})`.mapWith(
-          Number,
-        ),
-      thisWeek:
-        sql<number>`count(*) filter (where ${waitlistSignups.createdAt} >= ${now7d})`.mapWith(
-          Number,
-        ),
-      withReferral:
-        sql<number>`count(*) filter (where ${waitlistSignups.referredBy} is not null)`.mapWith(
-          Number,
-        ),
-      withQuestion:
-        sql<number>`count(*) filter (where ${waitlistSignups.firstQuestion} is not null)`.mapWith(
-          Number,
-        ),
-      withSurvey:
-        sql<number>`count(*) filter (where ${waitlistSignups.surveyResponses} is not null)`.mapWith(
-          Number,
-        ),
-    })
-    .from(waitlistSignups);
+  const stats = await db
+    .selectFrom("waitlist_signups")
+    .select([
+      sql<number>`count(*)`.as("total"),
+      sql<number>`count(*) filter (where email_confirmed = true)`.as("confirmed"),
+      sql<number>`count(*) filter (where created_at >= now() - interval '24 hours')`.as("today"),
+      sql<number>`count(*) filter (where created_at >= now() - interval '7 days')`.as("thisWeek"),
+      sql<number>`count(*) filter (where referred_by is not null)`.as("withReferral"),
+      sql<number>`count(*) filter (where first_question is not null)`.as("withQuestion"),
+      sql<number>`count(*) filter (where survey_responses is not null)`.as("withSurvey"),
+    ])
+    .executeTakeFirstOrThrow();
 
   // Survey breakdown via jsonb_each_text
-  const surveyRows = await db.execute(
-    sql`select key, value, count(*)::int as count from ${waitlistSignups}, jsonb_each_text(${waitlistSignups.surveyResponses}) group by key, value`,
-  ) as unknown as Array<{ key: string; value: string; count: number }>;
+  const surveyResult = await sql<{ key: string; value: string; count: number }>`
+    select key, value, count(*)::int as count
+    from waitlist_signups, jsonb_each_text(survey_responses)
+    group by key, value
+  `.execute(db);
+
+  const surveyRows = surveyResult.rows;
 
   const bySurvey: Record<string, Record<string, number>> = {};
   for (const row of surveyRows) {
@@ -76,29 +48,46 @@ app.get("/", async (c) => {
   }
 
   // Count with filters for pagination
-  const [{ count: total }] = await db
-    .select({ count: sql<number>`count(*)`.mapWith(Number) })
-    .from(waitlistSignups)
-    .where(where);
+  let countQuery = db
+    .selectFrom("waitlist_signups")
+    .select(sql<number>`count(*)`.as("count"));
+
+  if (search) countQuery = countQuery.where("email", "ilike", `%${search}%`);
+  if (surveyKey && surveyValue)
+    countQuery = countQuery.where(sql`survey_responses->>${surveyKey} = ${surveyValue}`);
+  if (emailConfirmed === "true")
+    countQuery = countQuery.where("email_confirmed", "=", true);
+  if (emailConfirmed === "false")
+    countQuery = countQuery.where("email_confirmed", "=", false);
+
+  const countResult = await countQuery.executeTakeFirstOrThrow();
+  const total = countResult.count;
 
   // Filtered + paginated rows
   const orderCol =
-    sort === "queuePosition"
-      ? waitlistSignups.queuePosition
-      : waitlistSignups.createdAt;
-  const orderFn = order === "asc" ? asc : desc;
+    sort === "queuePosition" ? "queue_position" as const : "created_at" as const;
 
-  const rows = await db
-    .select()
-    .from(waitlistSignups)
-    .where(where)
-    .orderBy(orderFn(orderCol))
+  let rowsQuery = db
+    .selectFrom("waitlist_signups")
+    .selectAll();
+
+  if (search) rowsQuery = rowsQuery.where("email", "ilike", `%${search}%`);
+  if (surveyKey && surveyValue)
+    rowsQuery = rowsQuery.where(sql`survey_responses->>${surveyKey} = ${surveyValue}`);
+  if (emailConfirmed === "true")
+    rowsQuery = rowsQuery.where("email_confirmed", "=", true);
+  if (emailConfirmed === "false")
+    rowsQuery = rowsQuery.where("email_confirmed", "=", false);
+
+  const rows = await rowsQuery
+    .orderBy(orderCol, order)
     .limit(limit)
-    .offset(offset);
+    .offset(offset)
+    .execute();
 
   const signups = rows.map((r) => ({
     ...r,
-    createdAt: r.createdAt.toISOString(),
+    createdAt: new Date(r.created_at).toISOString(),
   }));
 
   return c.json({

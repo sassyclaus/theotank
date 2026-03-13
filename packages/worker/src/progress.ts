@@ -1,5 +1,4 @@
-import { getDb } from "@theotank/rds/db";
-import { resultProgressLogs } from "@theotank/rds/schema";
+import { getDb } from "@theotank/rds";
 
 export async function logProgress(
   resultId: string,
@@ -7,9 +6,9 @@ export async function logProgress(
   metadata?: Record<string, unknown>
 ): Promise<void> {
   const db = getDb();
-  await db.insert(resultProgressLogs).values({
-    resultId,
+  await db.insertInto('result_progress_logs').values({
+    result_id: resultId,
     message,
     metadata: metadata ?? null,
-  });
+  }).execute();
 }

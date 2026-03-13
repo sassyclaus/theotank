@@ -1,0 +1,26 @@
+-- ── Claim Architecture: Drizzle Schema Sync ──────────────────────────
+-- This migration confirms alignment between the hand-written SQL
+-- migrations (0023-0027) and the new Drizzle schema TypeScript files.
+--
+-- All claim-architecture tables, enums, indexes, and constraints were
+-- created via hand-written SQL. The corresponding Drizzle schema TS
+-- files match precisely — no additional DDL is required.
+--
+-- Note: drizzle-kit generate cannot produce a clean diff because the
+-- last schema snapshot predates migrations 0015-0027 (all hand-written).
+-- A future drizzle-kit introspect + snapshot refresh can resolve this
+-- if automated migration generation is needed going forward.
+--
+-- Verified objects:
+--   7 enums: consensus_status, citation_status, attestation_type,
+--            citation_support_type, citation_source,
+--            query_claim_relationship, composition_tool
+--  14 tables: topics, queries, claims, attestations, claim_citations,
+--             annotations, compositions, theologian_compositions,
+--             composition_claims, query_claims,
+--             query_theologian_saturations, composition_saves,
+--             claim_saves, composition_views
+--   5 HNSW indexes, 3 partial B-tree indexes, ~25 standard B-tree indexes
+--
+-- No-op migration.
+SELECT 1;

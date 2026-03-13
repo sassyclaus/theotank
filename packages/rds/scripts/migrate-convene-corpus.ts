@@ -13,25 +13,10 @@
  */
 
 import postgres from "postgres";
-import { drizzle } from "drizzle-orm/postgres-js";
-import { eq, sql } from "drizzle-orm";
-import { theologians } from "../src/schema/theologians";
-import {
-  works,
-  editions,
-  nodes,
-  nodeSummaries,
-  paragraphs,
-  paragraphTranslations,
-} from "../src/schema/corpus";
-import type {
-  NewWork,
-  NewEdition,
-  NewNode,
-  NewNodeSummary,
-  NewParagraph,
-  NewParagraphTranslation,
-} from "../src/schema/corpus";
+import { Kysely } from "kysely";
+import { PostgresJSDialect } from "kysely-postgres-js";
+import { sql } from "kysely";
+import type { DB } from "../src/kysely-types";
 
 // ── connections ──────────────────────────────────────────────────────────────
 
@@ -44,7 +29,9 @@ const theotankUrl =
 
 const conveneClient = postgres(conveneUrl);
 const theotankClient = postgres(theotankUrl);
-const db = drizzle(theotankClient);
+const db = new Kysely<DB>({
+  dialect: new PostgresJSDialect({ postgres: theotankClient }),
+});
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -158,8 +145,9 @@ async function main() {
     SELECT id, slug FROM authors
   `;
   const theologianRows = await db
-    .select({ id: theologians.id, slug: theologians.slug })
-    .from(theologians);
+    .selectFrom('theologians')
+    .select(['id', 'slug'])
+    .execute();
   const slugToTheologianId = new Map(theologianRows.map((t) => [t.slug, t.id]));
 
   const authorIdToTheologianId = new Map<string, string>();
@@ -193,22 +181,23 @@ async function main() {
       continue;
     }
 
-    const row: NewWork = {
-      theologianId,
+    const row = {
+      theologian_id: theologianId,
       slug: w.slug ?? slugify(w.title),
       title: w.title,
-      yearMin: w.year_min,
-      yearMax: w.year_max,
+      year_min: w.year_min,
+      year_max: w.year_max,
       description: w.description,
-      createdAt: w.created_at,
-      updatedAt: w.updated_at,
+      created_at: w.created_at,
+      updated_at: w.updated_at,
     };
 
-    const [inserted] = await db
-      .insert(works)
+    const inserted = await db
+      .insertInto('works')
       .values(row)
-      .returning({ id: works.id });
-    workIdMap.set(w.id, inserted.id);
+      .returning(['id'])
+      .executeTakeFirst();
+    workIdMap.set(w.id, inserted!.id);
     worksInserted++;
   }
   console.log(`  Inserted ${worksInserted} works (skipped ${worksSkipped})`);
@@ -238,25 +227,26 @@ async function main() {
       workLanguages.set(e.work_id, e.language);
     }
 
-    const row: NewEdition = {
-      workId,
+    const row = {
+      work_id: workId,
       label: e.label,
       language: e.language,
       publisher: e.publisher,
       translator: e.translator,
       license: e.license,
-      sourceUrl: e.source_url,
-      sourceStorageKey: e.raw_storage_key,
-      status: "ready",
-      createdAt: e.created_at,
-      updatedAt: e.updated_at,
+      source_url: e.source_url,
+      source_storage_key: e.raw_storage_key,
+      status: "ready" as const,
+      created_at: e.created_at,
+      updated_at: e.updated_at,
     };
 
-    const [inserted] = await db
-      .insert(editions)
+    const inserted = await db
+      .insertInto('editions')
       .values(row)
-      .returning({ id: editions.id });
-    editionIdMap.set(e.id, inserted.id);
+      .returning(['id'])
+      .executeTakeFirst();
+    editionIdMap.set(e.id, inserted!.id);
     editionsInserted++;
   }
   console.log(
@@ -268,9 +258,10 @@ async function main() {
     const theotankWorkId = workIdMap.get(conveneWorkId);
     if (theotankWorkId) {
       await db
-        .update(works)
-        .set({ originalLanguage: language })
-        .where(eq(works.id, theotankWorkId));
+        .updateTable('works')
+        .set({ original_language: language })
+        .where('id', '=', theotankWorkId)
+        .execute();
     }
   }
 
@@ -319,23 +310,24 @@ async function main() {
       }
     }
 
-    const row: NewNode = {
-      editionId,
-      parentId,
+    const row = {
+      edition_id: editionId,
+      parent_id: parentId,
       depth: n.depth,
-      sortOrder: n.sort_order,
+      sort_order: n.sort_order,
       heading: n.heading,
-      canonicalRef: n.canonical_ref,
+      canonical_ref: n.canonical_ref,
       embedding,
-      embedMethod,
-      createdAt: n.created_at,
+      embed_method: embedMethod,
+      created_at: n.created_at,
     };
 
-    const [inserted] = await db
-      .insert(nodes)
+    const inserted = await db
+      .insertInto('nodes')
       .values(row)
-      .returning({ id: nodes.id });
-    nodeIdMap.set(n.id, inserted.id);
+      .returning(['id'])
+      .executeTakeFirst();
+    nodeIdMap.set(n.id, inserted!.id);
     nodesInserted++;
   }
   console.log(`  Inserted ${nodesInserted} nodes (skipped ${nodesSkipped})`);
@@ -357,16 +349,16 @@ async function main() {
       continue;
     }
 
-    const row: NewNodeSummary = {
-      nodeId,
+    const row = {
+      node_id: nodeId,
       language: s.language || "en",
-      summary: tryParseJson(s.summary) ?? { prose: s.summary },
-      embeddingText: s.embedding_text,
+      summary: JSON.stringify(tryParseJson(s.summary) ?? { prose: s.summary }),
+      embedding_text: s.embedding_text,
       model: s.model,
-      createdAt: s.created_at,
+      created_at: s.created_at,
     };
 
-    await db.insert(nodeSummaries).values(row);
+    await db.insertInto('node_summaries').values(row).execute();
     summariesInserted++;
   }
   console.log(
@@ -419,25 +411,26 @@ async function main() {
       }
     }
 
-    const row: NewParagraph = {
-      nodeId,
-      sortOrder: p.sort_order,
+    const row = {
+      node_id: nodeId,
+      sort_order: p.sort_order,
       text: p.text,
-      normalizedText: p.normalized_text,
-      canonicalRef: p.canonical_ref,
-      pageStart: p.page_start,
-      pageEnd: p.page_end,
+      normalized_text: p.normalized_text,
+      canonical_ref: p.canonical_ref,
+      page_start: p.page_start,
+      page_end: p.page_end,
       language: p.language,
       embedding,
-      embedMethod,
-      createdAt: p.created_at,
+      embed_method: embedMethod,
+      created_at: p.created_at,
     };
 
-    const [inserted] = await db
-      .insert(paragraphs)
+    const inserted = await db
+      .insertInto('paragraphs')
       .values(row)
-      .returning({ id: paragraphs.id });
-    paragraphIdMap.set(p.id, inserted.id);
+      .returning(['id'])
+      .executeTakeFirst();
+    paragraphIdMap.set(p.id, inserted!.id);
     paragraphsInserted++;
   }
   console.log(
@@ -448,9 +441,10 @@ async function main() {
   console.log("  Updating edition paragraph counts…");
   for (const [editionId, count] of editionParagraphCounts) {
     await db
-      .update(editions)
-      .set({ paragraphCount: count })
-      .where(eq(editions.id, editionId));
+      .updateTable('editions')
+      .set({ paragraph_count: count })
+      .where('id', '=', editionId)
+      .execute();
   }
 
   // ── Step 7: Migrate paragraph translations ─────────────────────────────
@@ -470,16 +464,16 @@ async function main() {
       continue;
     }
 
-    const row: NewParagraphTranslation = {
-      paragraphId,
+    const row = {
+      paragraph_id: paragraphId,
       language: t.language || "en",
       text: t.text,
       source: t.source,
       model: t.model,
-      createdAt: t.created_at,
+      created_at: t.created_at,
     };
 
-    await db.insert(paragraphTranslations).values(row);
+    await db.insertInto('paragraph_translations').values(row).execute();
     translationsInserted++;
   }
   console.log(
@@ -501,9 +495,10 @@ async function main() {
   let flagsSet = 0;
   for (const tid of migratedTheologianIds) {
     await db
-      .update(theologians)
-      .set({ hasResearch: true, updatedAt: new Date() })
-      .where(eq(theologians.id, tid));
+      .updateTable('theologians')
+      .set({ has_research: true, updated_at: new Date() })
+      .where('id', '=', tid)
+      .execute();
     flagsSet++;
   }
   console.log(`  Set hasResearch = true on ${flagsSet} theologians`);
@@ -543,7 +538,7 @@ async function main() {
   // ── Cleanup ────────────────────────────────────────────────────────────
 
   await conveneClient.end();
-  await theotankClient.end();
+  await db.destroy();
   console.log("\nDone.");
 }
 

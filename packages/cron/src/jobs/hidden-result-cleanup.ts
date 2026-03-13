@@ -1,5 +1,5 @@
-import { getDb } from "@theotank/rds/db";
-import { sql } from "drizzle-orm";
+import { getDb } from "@theotank/rds";
+import { sql } from "kysely";
 import { safeDeleteObject } from "../lib/s3";
 import { logger } from "../lib/logger";
 import type { CronJob } from "./types";
@@ -12,12 +12,12 @@ export const hiddenResultCleanup: CronJob = {
     const db = getDb();
 
     // Find hidden results older than 30 days
-    const rows = await db.execute(sql`
+    const { rows } = await sql`
       SELECT id, content_key, pdf_key
       FROM results
       WHERE hidden_at IS NOT NULL
         AND hidden_at < NOW() - interval '30 days'
-    `);
+    `.execute(db);
 
     if (rows.length === 0) return { affected: 0 };
 
@@ -36,11 +36,11 @@ export const hiddenResultCleanup: CronJob = {
 
     // Delete result rows (cascades to progress logs and saves)
     const ids = (rows as any[]).map((r) => r.id);
-    const deleted = await db.execute(sql`
+    const { rows: deleted } = await sql`
       DELETE FROM results
       WHERE id = ANY(${ids}::uuid[])
       RETURNING id
-    `);
+    `.execute(db);
 
     logger.info(
       { resultCount: deleted.length, s3ObjectsDeleted: s3Deleted },

@@ -3,7 +3,7 @@ import { config, validateConfig } from "./config";
 import { ConcurrencyPool } from "./pool";
 import { claimJob, recoverStaleJobs } from "./queue";
 import { processJob } from "./processors";
-import { closeDb } from "@theotank/rds/db";
+import { closeDb } from "@theotank/rds";
 import { logger } from "./lib/logger";
 import { ai } from "./lib/openai";
 

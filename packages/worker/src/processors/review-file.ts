@@ -1,7 +1,8 @@
-import { getDb } from "@theotank/rds/db";
-import { reviewFiles } from "@theotank/rds/schema";
-import { eq } from "drizzle-orm";
-import type { Job } from "@theotank/rds/schema";
+import { getDb } from "@theotank/rds";
+import type { Selectable } from "kysely";
+import type { Jobs } from "@theotank/rds";
+
+type Job = Selectable<Jobs>;
 import type { Logger } from "../lib/logger";
 import { downloadBuffer, uploadText } from "../s3";
 import { extractAudio, splitIfNeeded, cleanupChunks, getAudioDuration } from "../lib/audio-chunker";
@@ -18,9 +19,10 @@ interface ReviewFileJobPayload {
 async function failFile(fileId: string, message: string): Promise<void> {
   const db = getDb();
   await db
-    .update(reviewFiles)
-    .set({ status: "failed", errorMessage: message, updatedAt: new Date() })
-    .where(eq(reviewFiles.id, fileId));
+    .updateTable('review_files')
+    .set({ status: "failed", error_message: message, updated_at: new Date() })
+    .where('id', '=', fileId)
+    .execute();
 }
 
 export async function processReviewFile(job: Job, log: Logger): Promise<void> {
@@ -31,38 +33,40 @@ export async function processReviewFile(job: Job, log: Logger): Promise<void> {
   log = log.child({ reviewFileId });
 
   // Load review file row
-  const [file] = await db
-    .select()
-    .from(reviewFiles)
-    .where(eq(reviewFiles.id, reviewFileId));
+  const file = await db
+    .selectFrom('review_files')
+    .selectAll()
+    .where('id', '=', reviewFileId)
+    .executeTakeFirst();
 
   if (!file) {
     throw new Error(`Review file ${reviewFileId} not found`);
   }
 
-  log.info({ contentType: file.contentType, fileName: file.fileName }, "Processing review file");
+  log.info({ contentType: file.content_type, fileName: file.file_name }, "Processing review file");
 
   // Mark as processing
   await db
-    .update(reviewFiles)
-    .set({ status: "processing", updatedAt: new Date() })
-    .where(eq(reviewFiles.id, reviewFileId));
+    .updateTable('review_files')
+    .set({ status: "processing", updated_at: new Date() })
+    .where('id', '=', reviewFileId)
+    .execute();
 
   let extractedText: string;
 
   try {
     // Download original file from S3
-    const buffer = await downloadBuffer(file.fileKey);
+    const buffer = await downloadBuffer(file.file_key);
 
     // Extract text based on content type
     extractedText = await extractTextByType(
       buffer,
-      file.contentType,
-      file.fileName,
+      file.content_type,
+      file.file_name,
       {
         attribution: {
           review_file_id: reviewFileId,
-          user_id: file.userId,
+          user_id: file.user_id,
         },
       },
     );
@@ -80,19 +84,20 @@ export async function processReviewFile(job: Job, log: Logger): Promise<void> {
   }
 
   // Upload extracted text to S3
-  const textKey = `review-files/${file.userId}/${reviewFileId}/extracted/text.txt`;
+  const textKey = `review-files/${file.user_id}/${reviewFileId}/extracted/text.txt`;
   await uploadText(textKey, extractedText);
 
   // Update review file as ready
   await db
-    .update(reviewFiles)
+    .updateTable('review_files')
     .set({
       status: "ready",
-      textStorageKey: textKey,
-      charCount: extractedText.length,
-      updatedAt: new Date(),
+      text_storage_key: textKey,
+      char_count: extractedText.length,
+      updated_at: new Date(),
     })
-    .where(eq(reviewFiles.id, reviewFileId));
+    .where('id', '=', reviewFileId)
+    .execute();
 
   log.info({ charCount: extractedText.length }, "Review file ready");
 }

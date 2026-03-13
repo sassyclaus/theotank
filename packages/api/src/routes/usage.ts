@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { getDb } from "@theotank/rds/db";
+import { getDb } from "@theotank/rds";
 import { getUserUsageSummary } from "../lib/usage-limits";
 import type { AppEnv } from "../lib/types";
 

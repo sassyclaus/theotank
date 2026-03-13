@@ -1,7 +1,6 @@
 import { Hono } from "hono";
-import { getDb } from "@theotank/rds/db";
-import { waitlistSignups } from "@theotank/rds/schema";
-import { eq, sql, count } from "drizzle-orm";
+import { getDb } from "@theotank/rds";
+import { sql } from "kysely";
 import { randomBytes, createHash } from "crypto";
 import type { AppEnv } from "../../lib/types";
 import { config } from "../../config";
@@ -41,52 +40,59 @@ app.post("/", rateLimiter({ windowMs: 60_000, max: 5 }), async (c) => {
   const db = getDb();
 
   // Check for existing signup
-  const [existing] = await db
-    .select({ referralCode: waitlistSignups.referralCode, queuePosition: waitlistSignups.queuePosition })
-    .from(waitlistSignups)
-    .where(eq(waitlistSignups.email, email));
+  const existing = await db
+    .selectFrom("waitlist_signups")
+    .select(["referral_code", "queue_position"])
+    .where("email", "=", email)
+    .executeTakeFirst();
 
   if (existing) {
     return c.json({
-      queuePosition: existing.queuePosition,
-      referralCode: existing.referralCode,
+      queuePosition: existing.queue_position,
+      referralCode: existing.referral_code,
       alreadySignedUp: true,
     });
   }
 
   // Get next queue position
-  const [{ total }] = await db
-    .select({ total: count() })
-    .from(waitlistSignups);
+  const { total } = await db
+    .selectFrom("waitlist_signups")
+    .select(sql<number>`count(*)`.as("total"))
+    .executeTakeFirstOrThrow();
 
   const queuePosition = total + 1;
   const referralCode = generateReferralCode();
 
   // Validate referrer exists if provided
   if (body.referredBy) {
-    const [referrer] = await db
-      .select({ id: waitlistSignups.id })
-      .from(waitlistSignups)
-      .where(eq(waitlistSignups.referralCode, body.referredBy));
+    const referrer = await db
+      .selectFrom("waitlist_signups")
+      .select("id")
+      .where("referral_code", "=", body.referredBy)
+      .executeTakeFirst();
 
     if (referrer) {
       // Increment referrer's count
       await db
-        .update(waitlistSignups)
-        .set({ referralCount: sql`${waitlistSignups.referralCount} + 1` })
-        .where(eq(waitlistSignups.referralCode, body.referredBy));
+        .updateTable("waitlist_signups")
+        .set({ referral_count: sql`referral_count + 1` })
+        .where("referral_code", "=", body.referredBy)
+        .execute();
     }
   }
 
-  await db.insert(waitlistSignups).values({
-    email,
-    referralCode,
-    referredBy: body.referredBy || null,
-    queuePosition,
-    utmSource: body.utmSource || null,
-    utmMedium: body.utmMedium || null,
-    utmCampaign: body.utmCampaign || null,
-  });
+  await db
+    .insertInto("waitlist_signups")
+    .values({
+      email,
+      referral_code: referralCode,
+      referred_by: body.referredBy || null,
+      queue_position: queuePosition,
+      utm_source: body.utmSource || null,
+      utm_medium: body.utmMedium || null,
+      utm_campaign: body.utmCampaign || null,
+    })
+    .execute();
 
   const token = generateConfirmToken(email);
   const confirmUrl = `${config.apiUrl}/public/waitlist/confirm/${token}?email=${encodeURIComponent(email)}`;
@@ -113,9 +119,10 @@ app.get("/confirm/:token", async (c) => {
 
   const db = getDb();
   await db
-    .update(waitlistSignups)
-    .set({ emailConfirmed: true })
-    .where(eq(waitlistSignups.email, email));
+    .updateTable("waitlist_signups")
+    .set({ email_confirmed: true })
+    .where("email", "=", email)
+    .execute();
 
   const siteUrl = config.siteUrl;
   return c.redirect(`${siteUrl}?confirmed=1`);
@@ -124,9 +131,10 @@ app.get("/confirm/:token", async (c) => {
 // GET /public/waitlist/count — Live signup count
 app.get("/count", async (c) => {
   const db = getDb();
-  const [{ total }] = await db
-    .select({ total: count() })
-    .from(waitlistSignups);
+  const { total } = await db
+    .selectFrom("waitlist_signups")
+    .select(sql<number>`count(*)`.as("total"))
+    .executeTakeFirstOrThrow();
 
   c.header("Cache-Control", "public, max-age=60");
   return c.json({ count: total });
@@ -158,10 +166,11 @@ app.post("/:code/survey", async (c) => {
 
   const db = getDb();
   const result = await db
-    .update(waitlistSignups)
-    .set({ surveyResponses: body.responses })
-    .where(eq(waitlistSignups.referralCode, code))
-    .returning({ id: waitlistSignups.id });
+    .updateTable("waitlist_signups")
+    .set({ survey_responses: JSON.stringify(body.responses) })
+    .where("referral_code", "=", code)
+    .returning(["id"])
+    .execute();
 
   if (result.length === 0) {
     return c.json({ error: "Signup not found" }, 404);

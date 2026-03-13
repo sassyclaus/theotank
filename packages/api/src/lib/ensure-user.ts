@@ -1,31 +1,35 @@
-import { getDb } from "@theotank/rds/db";
-import { users } from "@theotank/rds/schema";
-import { eq } from "drizzle-orm";
-import type { User } from "@theotank/rds/schema";
+import { getDb } from "@theotank/rds";
+import type { Selectable } from "kysely";
+import type { Users } from "@theotank/rds";
+
+export type User = Selectable<Users>;
 
 export async function ensureUser(clerkId: string): Promise<User> {
   const db = getDb();
 
   // Fast path: user already exists
-  const [existing] = await db
-    .select()
-    .from(users)
-    .where(eq(users.clerkId, clerkId));
+  const existing = await db
+    .selectFrom('users')
+    .selectAll()
+    .where('clerk_id', '=', clerkId)
+    .executeTakeFirst();
 
   if (existing) return existing;
 
-  // Insert new user (onConflictDoNothing for race conditions)
+  // Insert new user (onConflict doNothing for race conditions)
   // tier defaults to "free" via schema default
   await db
-    .insert(users)
-    .values({ clerkId })
-    .onConflictDoNothing();
+    .insertInto('users')
+    .values({ clerk_id: clerkId })
+    .onConflict(oc => oc.doNothing())
+    .execute();
 
   // Re-select to get the row (whether we inserted or a concurrent request did)
-  const [user] = await db
-    .select()
-    .from(users)
-    .where(eq(users.clerkId, clerkId));
+  const user = await db
+    .selectFrom('users')
+    .selectAll()
+    .where('clerk_id', '=', clerkId)
+    .executeTakeFirstOrThrow();
 
   return user;
 }

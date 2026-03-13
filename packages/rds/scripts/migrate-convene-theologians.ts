@@ -10,10 +10,10 @@
  */
 
 import postgres from "postgres";
-import { drizzle } from "drizzle-orm/postgres-js";
-import { sql } from "drizzle-orm";
-import { theologians } from "../src/schema/theologians";
-import type { NewTheologian } from "../src/schema/theologians";
+import { Kysely } from "kysely";
+import { PostgresJSDialect } from "kysely-postgres-js";
+import { sql } from "kysely";
+import type { DB } from "../src/kysely-types";
 
 // ── connections ──────────────────────────────────────────────────────────────
 
@@ -26,7 +26,9 @@ const theotankUrl =
 
 const conveneClient = postgres(conveneUrl);
 const theotankClient = postgres(theotankUrl);
-const db = drizzle(theotankClient);
+const db = new Kysely<DB>({
+  dialect: new PostgresJSDialect({ postgres: theotankClient }),
+});
 
 // ── era classification ───────────────────────────────────────────────────────
 
@@ -98,7 +100,7 @@ async function main() {
   const authorIdsWithWorks = new Set(worksRows.map((r) => r.author_id));
   console.log(`  ${authorIdsWithWorks.size} authors have works`);
 
-  const rows: NewTheologian[] = authors.map((a) => ({
+  const rows = authors.map((a) => ({
     slug: a.slug ?? slugify(a.name),
     name: a.name,
     initials: computeInitials(a.name),
@@ -107,12 +109,12 @@ async function main() {
     born: a.est_birth_year || null,
     died: a.est_death_year || null,
     era: classifyEra(a.est_birth_year),
-    tradition: null,
-    languagePrimary: a.language_primary,
-    voiceStyle: a.voice_style,
-    hasResearch: authorIdsWithWorks.has(a.id),
-    createdAt: a.created_at,
-    updatedAt: a.updated_at,
+    tradition: null as string | null,
+    language_primary: a.language_primary,
+    voice_style: a.voice_style,
+    has_research: authorIdsWithWorks.has(a.id),
+    created_at: a.created_at,
+    updated_at: a.updated_at,
   }));
 
   console.log(`Upserting ${rows.length} theologians…`);
@@ -120,11 +122,10 @@ async function main() {
   let upserted = 0;
   for (const row of rows) {
     await db
-      .insert(theologians)
+      .insertInto('theologians')
       .values(row)
-      .onConflictDoUpdate({
-        target: theologians.slug,
-        set: {
+      .onConflict((oc) =>
+        oc.column('slug').doUpdateSet({
           name: sql`excluded.name`,
           initials: sql`excluded.initials`,
           tagline: sql`excluded.tagline`,
@@ -133,19 +134,20 @@ async function main() {
           died: sql`excluded.died`,
           era: sql`excluded.era`,
           tradition: sql`excluded.tradition`,
-          languagePrimary: sql`excluded.language_primary`,
-          voiceStyle: sql`excluded.voice_style`,
-          hasResearch: sql`excluded.has_research`,
-          updatedAt: sql`excluded.updated_at`,
-        },
-      });
+          language_primary: sql`excluded.language_primary`,
+          voice_style: sql`excluded.voice_style`,
+          has_research: sql`excluded.has_research`,
+          updated_at: sql`excluded.updated_at`,
+        })
+      )
+      .execute();
     upserted++;
   }
 
   console.log(`✓ Upserted ${upserted} theologians`);
 
   await conveneClient.end();
-  await theotankClient.end();
+  await db.destroy();
   console.log("Done.");
 }
 

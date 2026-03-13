@@ -1,3 +1,5 @@
-export * from "./schema";
-export { getDb, closeDb } from "./db";
-export { runMigrations } from "./migrate";
+export { getDb, closeDb } from "./kysely-db";
+export type * from "./kysely-types";
+export { sql } from "kysely";
+export type { Kysely, Selectable, ExpressionBuilder } from "kysely";
+export { runMigrations } from "./kysely-migrate";

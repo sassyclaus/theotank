@@ -1,7 +1,6 @@
 import { Hono } from "hono";
-import { getDb } from "@theotank/rds/db";
-import { inferenceLogs, results, users } from "@theotank/rds/schema";
-import { gte, inArray, eq, sql, ilike, and, desc, asc } from "drizzle-orm";
+import { getDb } from "@theotank/rds";
+import { sql } from "kysely";
 import { estimateCost, MODEL_PRICING, WHISPER_COST_PER_MINUTE, costCaseExpression } from "../../lib/model-pricing";
 import type { AppEnv } from "../../lib/types";
 
@@ -15,9 +14,10 @@ app.get("/", async (c) => {
 
   // Fetch all inference logs in the window
   const rows = await db
-    .select()
-    .from(inferenceLogs)
-    .where(gte(inferenceLogs.createdAt, windowStart));
+    .selectFrom("inference_logs")
+    .selectAll()
+    .where("created_at", ">=", windowStart)
+    .execute();
 
   // Resolve unique userIds to user records
   const userIds = [
@@ -31,12 +31,13 @@ app.get("/", async (c) => {
   const userRows =
     userIds.length > 0
       ? await db
-          .select({ clerkId: users.clerkId, email: users.email, name: users.name })
-          .from(users)
-          .where(inArray(users.clerkId, userIds))
+          .selectFrom("users")
+          .select(["clerk_id", "email", "name"])
+          .where("clerk_id", "in", userIds)
+          .execute()
       : [];
 
-  const userMap = new Map(userRows.map((u) => [u.clerkId, u]));
+  const userMap = new Map(userRows.map((u) => [u.clerk_id, u]));
 
   // Aggregate
   let totalPromptTokens = 0;
@@ -69,26 +70,26 @@ app.get("/", async (c) => {
     const attr = (row.attribution ?? {}) as Record<string, string>;
     const toolType = attr.tool_type ?? row.source;
     const userId = attr.user_id;
-    const rowTokens = row.promptTokens + row.completionTokens;
+    const rowTokens = row.prompt_tokens + row.completion_tokens;
 
     // Calculate cost — Whisper uses duration, others use tokens
     let rowCost: number;
-    if (row.model === "whisper-1" && row.durationSeconds) {
-      rowCost = WHISPER_COST_PER_MINUTE * (row.durationSeconds / 60);
+    if (row.model === "whisper-1" && row.duration_seconds) {
+      rowCost = WHISPER_COST_PER_MINUTE * (row.duration_seconds / 60);
     } else {
-      rowCost = estimateCost(row.model, row.promptTokens, row.completionTokens);
+      rowCost = estimateCost(row.model, row.prompt_tokens, row.completion_tokens);
     }
 
-    totalPromptTokens += row.promptTokens;
-    totalCompletionTokens += row.completionTokens;
+    totalPromptTokens += row.prompt_tokens;
+    totalCompletionTokens += row.completion_tokens;
     totalTokens += rowTokens;
     totalEstimatedCost += rowCost;
 
     // By model
     const modelEntry = byModelMap.get(row.model) ?? { calls: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0, estimatedCost: 0 };
     modelEntry.calls++;
-    modelEntry.promptTokens += row.promptTokens;
-    modelEntry.completionTokens += row.completionTokens;
+    modelEntry.promptTokens += row.prompt_tokens;
+    modelEntry.completionTokens += row.completion_tokens;
     modelEntry.totalTokens += rowTokens;
     modelEntry.estimatedCost += rowCost;
     byModelMap.set(row.model, modelEntry);
@@ -96,8 +97,8 @@ app.get("/", async (c) => {
     // By tool
     const toolEntry = byToolMap.get(toolType) ?? { resultCount: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0, estimatedCost: 0 };
     toolEntry.resultCount++;
-    toolEntry.promptTokens += row.promptTokens;
-    toolEntry.completionTokens += row.completionTokens;
+    toolEntry.promptTokens += row.prompt_tokens;
+    toolEntry.completionTokens += row.completion_tokens;
     toolEntry.totalTokens += rowTokens;
     toolEntry.estimatedCost += rowCost;
     byToolMap.set(toolType, toolEntry);
@@ -112,12 +113,12 @@ app.get("/", async (c) => {
     }
 
     // Daily trend
-    const dateKey = row.createdAt.toISOString().slice(0, 10);
+    const dateKey = row.created_at.toISOString().slice(0, 10);
     if (!dailyMap.has(dateKey)) dailyMap.set(dateKey, new Map());
     const dayTools = dailyMap.get(dateKey)!;
     const dayEntry = dayTools.get(toolType) ?? { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
-    dayEntry.promptTokens += row.promptTokens;
-    dayEntry.completionTokens += row.completionTokens;
+    dayEntry.promptTokens += row.prompt_tokens;
+    dayEntry.completionTokens += row.completion_tokens;
     dayEntry.totalTokens += rowTokens;
     dayTools.set(toolType, dayEntry);
   }
@@ -207,79 +208,75 @@ app.get("/results", async (c) => {
   // Subquery: aggregate inference_logs per result_id
   const costExpr = costCaseExpression();
   const resultCosts = db
-    .select({
-      resultId: sql<string>`(attribution->>'result_id')::uuid`.as("result_id"),
-      promptTokens: sql<number>`SUM(prompt_tokens)`.as("agg_prompt_tokens"),
-      completionTokens: sql<number>`SUM(completion_tokens)`.as("agg_completion_tokens"),
-      inferenceCalls: sql<number>`COUNT(*)`.as("inference_calls"),
-      estimatedCost: sql<number>`SUM(${sql.raw(costExpr)})`.as("estimated_cost"),
-    })
-    .from(inferenceLogs)
-    .where(
-      and(
-        gte(inferenceLogs.createdAt, windowStart),
-        sql`attribution->>'result_id' IS NOT NULL`,
-      ),
-    )
+    .selectFrom("inference_logs")
+    .select([
+      sql<string>`(attribution->>'result_id')::uuid`.as("result_id"),
+      sql<number>`SUM(prompt_tokens)`.as("agg_prompt_tokens"),
+      sql<number>`SUM(completion_tokens)`.as("agg_completion_tokens"),
+      sql<number>`COUNT(*)`.as("inference_calls"),
+      sql<number>`SUM(${sql.raw(costExpr)})`.as("estimated_cost"),
+    ])
+    .where("created_at", ">=", windowStart)
+    .where(sql`attribution->>'result_id' IS NOT NULL`)
     .groupBy(sql`attribution->>'result_id'`)
     .as("result_costs");
 
-  // Build WHERE conditions for the main query
-  const conditions = [];
+  // Build main query
+  let mainQuery = db
+    .selectFrom(resultCosts)
+    .innerJoin("results", "result_costs.result_id", "results.id")
+    .leftJoin("users", "users.clerk_id", "results.user_id")
+    .select([
+      "results.id as resultId",
+      "results.title",
+      "results.tool_type",
+      "results.status",
+      "users.name as userName",
+      "users.email as userEmail",
+      "result_costs.inference_calls as inferenceCalls",
+      "result_costs.agg_prompt_tokens as promptTokens",
+      "result_costs.agg_completion_tokens as completionTokens",
+      "result_costs.estimated_cost as estimatedCost",
+      "results.created_at",
+    ]);
+
   if (toolType) {
-    conditions.push(eq(results.toolType, toolType as typeof results.toolType.enumValues[number]));
+    mainQuery = mainQuery.where("results.tool_type", "=", toolType as any);
   }
   if (search) {
-    conditions.push(ilike(results.title, `%${search}%`));
+    mainQuery = mainQuery.where("results.title", "ilike", `%${search}%`);
   }
 
-  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
-
   // Sort expression
-  const sortExpr =
-    sort === "cost"
-      ? order === "asc"
-        ? asc(resultCosts.estimatedCost)
-        : desc(resultCosts.estimatedCost)
-      : order === "asc"
-        ? asc(results.createdAt)
-        : desc(results.createdAt);
+  const sortCol =
+    sort === "cost" ? "result_costs.estimated_cost" as const : "results.created_at" as const;
 
-  // Main query
-  const rows = await db
-    .select({
-      resultId: results.id,
-      title: results.title,
-      toolType: results.toolType,
-      status: results.status,
-      userName: users.name,
-      userEmail: users.email,
-      inferenceCalls: resultCosts.inferenceCalls,
-      promptTokens: resultCosts.promptTokens,
-      completionTokens: resultCosts.completionTokens,
-      estimatedCost: resultCosts.estimatedCost,
-      createdAt: results.createdAt,
-    })
-    .from(resultCosts)
-    .innerJoin(results, eq(sql`${resultCosts.resultId}`, results.id))
-    .leftJoin(users, eq(users.clerkId, results.userId))
-    .where(whereClause)
-    .orderBy(sortExpr)
+  const rows = await mainQuery
+    .orderBy(sortCol, order)
     .limit(limit)
-    .offset(offset);
+    .offset(offset)
+    .execute();
 
   // Count query
-  const [{ total }] = await db
-    .select({ total: sql<number>`COUNT(*)` })
-    .from(resultCosts)
-    .innerJoin(results, eq(sql`${resultCosts.resultId}`, results.id))
-    .where(whereClause);
+  let countQuery = db
+    .selectFrom(resultCosts)
+    .innerJoin("results", "result_costs.result_id", "results.id")
+    .select(sql<number>`COUNT(*)`.as("total"));
+
+  if (toolType) {
+    countQuery = countQuery.where("results.tool_type", "=", toolType as any);
+  }
+  if (search) {
+    countQuery = countQuery.where("results.title", "ilike", `%${search}%`);
+  }
+
+  const { total } = await countQuery.executeTakeFirstOrThrow();
 
   return c.json({
     results: rows.map((r) => ({
       resultId: r.resultId,
       title: r.title,
-      toolType: r.toolType,
+      toolType: r.tool_type,
       status: r.status,
       userName: r.userName,
       userEmail: r.userEmail,
@@ -288,7 +285,7 @@ app.get("/results", async (c) => {
       completionTokens: Number(r.completionTokens),
       totalTokens: Number(r.promptTokens) + Number(r.completionTokens),
       estimatedCost: Math.round(Number(r.estimatedCost) * 10000) / 10000,
-      createdAt: r.createdAt.toISOString(),
+      createdAt: r.created_at.toISOString(),
     })),
     total: Number(total),
   });

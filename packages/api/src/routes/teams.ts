@@ -1,7 +1,5 @@
 import { Hono } from "hono";
-import { getDb } from "@theotank/rds/db";
-import { teams, teamMemberships, theologians } from "@theotank/rds/schema";
-import { eq, and, asc } from "drizzle-orm";
+import { getDb } from "@theotank/rds";
 import { shapeMember, createSnapshot } from "../lib/team-helpers";
 import type { AppEnv } from "../lib/types";
 
@@ -12,28 +10,31 @@ app.get("/", async (c) => {
   const db = getDb();
 
   const nativeTeams = await db
-    .select()
-    .from(teams)
-    .where(and(eq(teams.isNative, true), eq(teams.visible, true)))
-    .orderBy(asc(teams.displayOrder));
+    .selectFrom("teams")
+    .selectAll()
+    .where("is_native", "=", true)
+    .where("visible", "=", true)
+    .orderBy("display_order", "asc")
+    .execute();
 
   // Get member counts and preview members for each team
   const result = await Promise.all(
     nativeTeams.map(async (team) => {
       const memberRows = await db
-        .select({
-          theologianId: theologians.id,
-          name: theologians.name,
-          slug: theologians.slug,
-          initials: theologians.initials,
-          tradition: theologians.tradition,
-          imageKey: theologians.imageKey,
-          updatedAt: theologians.updatedAt,
-        })
-        .from(teamMemberships)
-        .innerJoin(theologians, eq(teamMemberships.theologianId, theologians.id))
-        .where(eq(teamMemberships.teamId, team.id))
-        .orderBy(asc(theologians.name));
+        .selectFrom("team_memberships")
+        .innerJoin("theologians", "theologians.id", "team_memberships.theologian_id")
+        .select([
+          "theologians.id as theologian_id",
+          "theologians.name",
+          "theologians.slug",
+          "theologians.initials",
+          "theologians.tradition",
+          "theologians.image_key",
+          "theologians.updated_at",
+        ])
+        .where("team_memberships.team_id", "=", team.id)
+        .orderBy("theologians.name", "asc")
+        .execute();
 
       const members = memberRows.map(shapeMember);
 
@@ -57,27 +58,30 @@ app.get("/my", async (c) => {
   const db = getDb();
 
   const userTeams = await db
-    .select()
-    .from(teams)
-    .where(and(eq(teams.userId, userId), eq(teams.isNative, false)))
-    .orderBy(asc(teams.name));
+    .selectFrom("teams")
+    .selectAll()
+    .where("user_id", "=", userId)
+    .where("is_native", "=", false)
+    .orderBy("name", "asc")
+    .execute();
 
   const result = await Promise.all(
     userTeams.map(async (team) => {
       const memberRows = await db
-        .select({
-          theologianId: theologians.id,
-          name: theologians.name,
-          slug: theologians.slug,
-          initials: theologians.initials,
-          tradition: theologians.tradition,
-          imageKey: theologians.imageKey,
-          updatedAt: theologians.updatedAt,
-        })
-        .from(teamMemberships)
-        .innerJoin(theologians, eq(teamMemberships.theologianId, theologians.id))
-        .where(eq(teamMemberships.teamId, team.id))
-        .orderBy(asc(theologians.name));
+        .selectFrom("team_memberships")
+        .innerJoin("theologians", "theologians.id", "team_memberships.theologian_id")
+        .select([
+          "theologians.id as theologian_id",
+          "theologians.name",
+          "theologians.slug",
+          "theologians.initials",
+          "theologians.tradition",
+          "theologians.image_key",
+          "theologians.updated_at",
+        ])
+        .where("team_memberships.team_id", "=", team.id)
+        .orderBy("theologians.name", "asc")
+        .execute();
 
       return {
         id: team.id,
@@ -103,44 +107,49 @@ app.post("/", async (c) => {
 
   const db = getDb();
 
-  const result = await db.transaction(async (tx) => {
-    const [team] = await tx
-      .insert(teams)
+  const result = await db.transaction().execute(async (trx) => {
+    const team = await trx
+      .insertInto("teams")
       .values({
-        userId,
+        user_id: userId,
         name: body.name,
         description: body.description ?? null,
-        isNative: false,
+        is_native: false,
       })
-      .returning();
+      .returningAll()
+      .executeTakeFirstOrThrow();
 
     if (body.memberIds.length > 0) {
-      await tx.insert(teamMemberships).values(
-        body.memberIds.map((theologianId) => ({
-          teamId: team.id,
-          theologianId,
-        })),
-      );
+      await trx
+        .insertInto("team_memberships")
+        .values(
+          body.memberIds.map((theologianId) => ({
+            team_id: team.id,
+            theologian_id: theologianId,
+          })),
+        )
+        .execute();
     }
 
     // Create initial snapshot
-    await createSnapshot(tx, team.id, team.name, team.description, 1);
+    await createSnapshot(trx, team.id, team.name, team.description, 1);
 
     // Return with full members
-    const memberRows = await tx
-      .select({
-        theologianId: theologians.id,
-        name: theologians.name,
-        slug: theologians.slug,
-        initials: theologians.initials,
-        tradition: theologians.tradition,
-        imageKey: theologians.imageKey,
-        updatedAt: theologians.updatedAt,
-      })
-      .from(teamMemberships)
-      .innerJoin(theologians, eq(teamMemberships.theologianId, theologians.id))
-      .where(eq(teamMemberships.teamId, team.id))
-      .orderBy(asc(theologians.name));
+    const memberRows = await trx
+      .selectFrom("team_memberships")
+      .innerJoin("theologians", "theologians.id", "team_memberships.theologian_id")
+      .select([
+        "theologians.id as theologianId",
+        "theologians.name",
+        "theologians.slug",
+        "theologians.initials",
+        "theologians.tradition",
+        "theologians.image_key as imageKey",
+        "theologians.updated_at as updatedAt",
+      ])
+      .where("team_memberships.team_id", "=", team.id)
+      .orderBy("theologians.name", "asc")
+      .execute();
 
     return {
       id: team.id,
@@ -167,23 +176,21 @@ app.put("/:id", async (c) => {
   const db = getDb();
 
   // Verify ownership
-  const [existing] = await db
-    .select()
-    .from(teams)
-    .where(and(eq(teams.id, teamId), eq(teams.userId, userId), eq(teams.isNative, false)));
+  const existing = await db
+    .selectFrom("teams")
+    .selectAll()
+    .where("id", "=", teamId)
+    .where("user_id", "=", userId)
+    .where("is_native", "=", false)
+    .executeTakeFirst();
 
   if (!existing) {
     return c.json({ error: "Team not found" }, 404);
   }
 
-  const result = await db.transaction(async (tx) => {
+  const result = await db.transaction().execute(async (trx) => {
     const membersChanged = body.memberIds !== undefined;
-    const updates: Partial<{
-      name: string;
-      description: string | null;
-      version: number;
-      updatedAt: Date;
-    }> = { updatedAt: new Date() };
+    const updates: Record<string, unknown> = { updated_at: new Date() };
     if (body.name !== undefined) updates.name = body.name;
     if (body.description !== undefined) updates.description = body.description;
 
@@ -193,17 +200,28 @@ app.put("/:id", async (c) => {
       updates.version = newVersion;
     }
 
-    await tx.update(teams).set(updates).where(eq(teams.id, teamId));
+    await trx
+      .updateTable("teams")
+      .set(updates)
+      .where("id", "=", teamId)
+      .execute();
 
     if (membersChanged) {
-      await tx.delete(teamMemberships).where(eq(teamMemberships.teamId, teamId));
+      await trx
+        .deleteFrom("team_memberships")
+        .where("team_id", "=", teamId)
+        .execute();
+
       if (body.memberIds!.length > 0) {
-        await tx.insert(teamMemberships).values(
-          body.memberIds!.map((theologianId) => ({
-            teamId,
-            theologianId,
-          })),
-        );
+        await trx
+          .insertInto("team_memberships")
+          .values(
+            body.memberIds!.map((theologianId) => ({
+              team_id: teamId,
+              theologian_id: theologianId,
+            })),
+          )
+          .execute();
       }
 
       const teamName = body.name ?? existing.name;
@@ -211,25 +229,31 @@ app.put("/:id", async (c) => {
         body.description !== undefined
           ? body.description
           : existing.description;
-      await createSnapshot(tx, teamId, teamName, teamDesc, newVersion);
+      await createSnapshot(trx, teamId, teamName, teamDesc, newVersion);
     }
 
     // Return updated team with members
-    const [team] = await tx.select().from(teams).where(eq(teams.id, teamId));
-    const memberRows = await tx
-      .select({
-        theologianId: theologians.id,
-        name: theologians.name,
-        slug: theologians.slug,
-        initials: theologians.initials,
-        tradition: theologians.tradition,
-        imageKey: theologians.imageKey,
-        updatedAt: theologians.updatedAt,
-      })
-      .from(teamMemberships)
-      .innerJoin(theologians, eq(teamMemberships.theologianId, theologians.id))
-      .where(eq(teamMemberships.teamId, teamId))
-      .orderBy(asc(theologians.name));
+    const team = await trx
+      .selectFrom("teams")
+      .selectAll()
+      .where("id", "=", teamId)
+      .executeTakeFirstOrThrow();
+
+    const memberRows = await trx
+      .selectFrom("team_memberships")
+      .innerJoin("theologians", "theologians.id", "team_memberships.theologian_id")
+      .select([
+        "theologians.id as theologianId",
+        "theologians.name",
+        "theologians.slug",
+        "theologians.initials",
+        "theologians.tradition",
+        "theologians.image_key as imageKey",
+        "theologians.updated_at as updatedAt",
+      ])
+      .where("team_memberships.team_id", "=", teamId)
+      .orderBy("theologians.name", "asc")
+      .execute();
 
     return {
       id: team.id,
@@ -250,16 +274,22 @@ app.delete("/:id", async (c) => {
 
   const db = getDb();
 
-  const [existing] = await db
-    .select()
-    .from(teams)
-    .where(and(eq(teams.id, teamId), eq(teams.userId, userId), eq(teams.isNative, false)));
+  const existing = await db
+    .selectFrom("teams")
+    .selectAll()
+    .where("id", "=", teamId)
+    .where("user_id", "=", userId)
+    .where("is_native", "=", false)
+    .executeTakeFirst();
 
   if (!existing) {
     return c.json({ error: "Team not found" }, 404);
   }
 
-  await db.delete(teams).where(eq(teams.id, teamId));
+  await db
+    .deleteFrom("teams")
+    .where("id", "=", teamId)
+    .execute();
 
   return c.body(null, 204);
 });

@@ -1,5 +1,5 @@
-import { getDb } from "@theotank/rds/db";
-import { sql } from "drizzle-orm";
+import { getDb } from "@theotank/rds";
+import { sql } from "kysely";
 import { safeDeleteObject } from "../lib/s3";
 import { logger } from "../lib/logger";
 import type { CronJob } from "./types";
@@ -12,12 +12,12 @@ export const orphanedReviewCleanup: CronJob = {
     const db = getDb();
 
     // Find pending review files older than 1 hour
-    const rows = await db.execute(sql`
+    const { rows } = await sql`
       SELECT id, file_key, text_storage_key
       FROM review_files
       WHERE status = 'pending'
         AND created_at < NOW() - interval '1 hour'
-    `);
+    `.execute(db);
 
     if (rows.length === 0) return { affected: 0 };
 
@@ -36,11 +36,11 @@ export const orphanedReviewCleanup: CronJob = {
 
     // Delete review file rows
     const ids = (rows as any[]).map((r) => r.id);
-    const deleted = await db.execute(sql`
+    const { rows: deleted } = await sql`
       DELETE FROM review_files
       WHERE id = ANY(${ids}::uuid[])
       RETURNING id
-    `);
+    `.execute(db);
 
     logger.info(
       { reviewFileCount: deleted.length, s3ObjectsDeleted: s3Deleted },

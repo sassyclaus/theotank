@@ -1,11 +1,6 @@
 import { Hono } from "hono";
-import { getDb } from "@theotank/rds/db";
-import {
-  contentFlags,
-  results,
-  teamSnapshots,
-} from "@theotank/rds/schema";
-import { eq, and, sql, desc, gte, ne } from "drizzle-orm";
+import { getDb } from "@theotank/rds";
+import { sql } from "kysely";
 import type { AppEnv } from "../../lib/types";
 
 const app = new Hono<AppEnv>();
@@ -15,32 +10,33 @@ app.get("/moderation", async (c) => {
   const db = getDb();
 
   const rows = await db
-    .select({
-      id: contentFlags.id,
-      resultId: contentFlags.resultId,
-      type: contentFlags.type,
-      reason: contentFlags.reason,
-      reporterId: contentFlags.reporterId,
-      status: contentFlags.status,
-      createdAt: contentFlags.createdAt,
-      resultTitle: results.title,
-      resultToolType: results.toolType,
-      teamName: teamSnapshots.name,
-    })
-    .from(contentFlags)
-    .innerJoin(results, eq(contentFlags.resultId, results.id))
-    .leftJoin(teamSnapshots, eq(results.teamSnapshotId, teamSnapshots.id))
-    .where(eq(contentFlags.status, "open"))
-    .orderBy(desc(contentFlags.createdAt));
+    .selectFrom("content_flags")
+    .innerJoin("results", "content_flags.result_id", "results.id")
+    .leftJoin("team_snapshots", "results.team_snapshot_id", "team_snapshots.id")
+    .select([
+      "content_flags.id",
+      "content_flags.result_id",
+      "content_flags.type",
+      "content_flags.reason",
+      "content_flags.reporter_id",
+      "content_flags.status",
+      "content_flags.created_at",
+      "results.title as resultTitle",
+      "results.tool_type as resultToolType",
+      "team_snapshots.name as teamName",
+    ])
+    .where("content_flags.status", "=", "open")
+    .orderBy("content_flags.created_at", "desc")
+    .execute();
 
   return c.json(
     rows.map((r) => ({
       id: r.id,
-      resultId: r.resultId,
+      resultId: r.result_id,
       type: r.type,
       reason: r.reason,
-      reporterId: r.reporterId,
-      createdAt: r.createdAt.toISOString(),
+      reporterId: r.reporter_id,
+      createdAt: r.created_at.toISOString(),
       result: {
         title: r.resultTitle,
         toolType: r.resultToolType,
@@ -58,69 +54,62 @@ app.get("/library", async (c) => {
   const offset = Number(c.req.query("offset")) || 0;
 
   // Base conditions: completed, not private, not research, not hidden, has content
-  const baseConditions = [
-    eq(results.status, "completed"),
-    eq(results.isPrivate, false),
-    ne(results.toolType, "research"),
-    sql`${results.hiddenAt} IS NULL`,
-    sql`${results.contentKey} IS NOT NULL`,
-  ];
+  let itemsQuery = db
+    .selectFrom("results")
+    .select([
+      "id",
+      "title",
+      "tool_type",
+      "view_count",
+      "save_count",
+      "moderation_status",
+      "created_at",
+    ])
+    .where("status", "=", "completed")
+    .where("is_private", "=", false)
+    .where("tool_type", "!=", "research")
+    .where("hidden_at", "is", null)
+    .where("content_key", "is not", null);
 
   if (search) {
-    baseConditions.push(sql`${results.title} ILIKE ${"%" + search + "%"}`);
+    itemsQuery = itemsQuery.where("title", "ilike", `%${search}%`);
   }
 
-  const items = await db
-    .select({
-      id: results.id,
-      title: results.title,
-      toolType: results.toolType,
-      viewCount: results.viewCount,
-      saveCount: results.saveCount,
-      moderationStatus: results.moderationStatus,
-      createdAt: results.createdAt,
-    })
-    .from(results)
-    .where(and(...baseConditions))
-    .orderBy(desc(results.createdAt))
+  const items = await itemsQuery
+    .orderBy("created_at", "desc")
     .limit(limit)
-    .offset(offset);
+    .offset(offset)
+    .execute();
 
   // Compute stats
   const now = new Date();
   const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-  const [statsRow] = await db
-    .select({
-      total: sql<number>`count(*)::int`,
-      addedThisWeek: sql<number>`count(*) FILTER (WHERE ${results.createdAt} >= ${weekAgo})::int`,
-      removedThisWeek: sql<number>`count(*) FILTER (WHERE ${results.moderationStatus} = 'removed' AND ${results.updatedAt} >= ${weekAgo})::int`,
-    })
-    .from(results)
-    .where(
-      and(
-        eq(results.status, "completed"),
-        ne(results.toolType, "research"),
-        sql`${results.hiddenAt} IS NULL`,
-        sql`${results.contentKey} IS NOT NULL`,
-      )
-    );
+  const statsRow = await db
+    .selectFrom("results")
+    .select([
+      sql<number>`count(*)::int`.as("total"),
+      sql<number>`count(*) FILTER (WHERE created_at >= ${weekAgo})::int`.as("addedThisWeek"),
+      sql<number>`count(*) FILTER (WHERE moderation_status = 'removed' AND updated_at >= ${weekAgo})::int`.as("removedThisWeek"),
+    ])
+    .where("status", "=", "completed")
+    .where("tool_type", "!=", "research")
+    .where("hidden_at", "is", null)
+    .where("content_key", "is not", null)
+    .executeTakeFirstOrThrow();
 
   // Private rate: private / (private + public)
-  const [privacyRow] = await db
-    .select({
-      total: sql<number>`count(*)::int`,
-      privateCount: sql<number>`count(*) FILTER (WHERE ${results.isPrivate} = true)::int`,
-    })
-    .from(results)
-    .where(
-      and(
-        eq(results.status, "completed"),
-        ne(results.toolType, "research"),
-        sql`${results.hiddenAt} IS NULL`,
-        sql`${results.contentKey} IS NOT NULL`,
-      )
-    );
+  const privacyRow = await db
+    .selectFrom("results")
+    .select([
+      sql<number>`count(*)::int`.as("total"),
+      sql<number>`count(*) FILTER (WHERE is_private = true)::int`.as("privateCount"),
+    ])
+    .where("status", "=", "completed")
+    .where("tool_type", "!=", "research")
+    .where("hidden_at", "is", null)
+    .where("content_key", "is not", null)
+    .executeTakeFirstOrThrow();
 
   const privateRate =
     privacyRow.total > 0
@@ -130,7 +119,7 @@ app.get("/library", async (c) => {
   return c.json({
     items: items.map((r) => ({
       ...r,
-      createdAt: r.createdAt.toISOString(),
+      createdAt: r.created_at.toISOString(),
     })),
     stats: {
       total: statsRow.total,
@@ -146,26 +135,27 @@ app.get("/flagged", async (c) => {
   const db = getDb();
 
   const rows = await db
-    .select({
-      resultId: results.id,
-      title: results.title,
-      toolType: results.toolType,
-      teamName: teamSnapshots.name,
-      flagCount: sql<number>`count(${contentFlags.id})::int`,
-      latestFlagAt: sql<string>`max(${contentFlags.createdAt})::text`,
-    })
-    .from(contentFlags)
-    .innerJoin(results, eq(contentFlags.resultId, results.id))
-    .leftJoin(teamSnapshots, eq(results.teamSnapshotId, teamSnapshots.id))
-    .where(eq(contentFlags.status, "open"))
-    .groupBy(results.id, results.title, results.toolType, teamSnapshots.name)
-    .orderBy(sql`max(${contentFlags.createdAt}) DESC`);
+    .selectFrom("content_flags")
+    .innerJoin("results", "content_flags.result_id", "results.id")
+    .leftJoin("team_snapshots", "results.team_snapshot_id", "team_snapshots.id")
+    .select([
+      "results.id as resultId",
+      "results.title",
+      "results.tool_type",
+      "team_snapshots.name as teamName",
+      sql<number>`count(content_flags.id)::int`.as("flagCount"),
+      sql<string>`max(content_flags.created_at)::text`.as("latestFlagAt"),
+    ])
+    .where("content_flags.status", "=", "open")
+    .groupBy(["results.id", "results.title", "results.tool_type", "team_snapshots.name"])
+    .orderBy(sql`max(content_flags.created_at) DESC`)
+    .execute();
 
   return c.json(
     rows.map((r) => ({
       id: r.resultId,
       title: r.title,
-      toolType: r.toolType,
+      toolType: r.tool_type,
       teamName: r.teamName,
       flagCount: r.flagCount,
       latestFlagAt: r.latestFlagAt,
@@ -179,45 +169,41 @@ app.post("/flags/:flagId/approve", async (c) => {
   const adminId = c.get("userId");
   const db = getDb();
 
-  const [flag] = await db
-    .select()
-    .from(contentFlags)
-    .where(eq(contentFlags.id, flagId));
+  const flag = await db
+    .selectFrom("content_flags")
+    .selectAll()
+    .where("id", "=", flagId)
+    .executeTakeFirst();
 
   if (!flag) {
     return c.json({ error: "Flag not found" }, 404);
   }
 
   await db
-    .update(contentFlags)
+    .updateTable("content_flags")
     .set({
       status: "dismissed",
-      resolvedBy: adminId,
-      resolvedAt: new Date(),
+      resolved_by: adminId,
+      resolved_at: new Date(),
     })
-    .where(eq(contentFlags.id, flagId));
+    .where("id", "=", flagId)
+    .execute();
 
   // If no more open flags on this result, restore to approved if pending_review
-  const [openCount] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(contentFlags)
-    .where(
-      and(
-        eq(contentFlags.resultId, flag.resultId),
-        eq(contentFlags.status, "open")
-      )
-    );
+  const openCount = await db
+    .selectFrom("content_flags")
+    .select(sql<number>`count(*)::int`.as("count"))
+    .where("result_id", "=", flag.result_id!)
+    .where("status", "=", "open")
+    .executeTakeFirstOrThrow();
 
   if (openCount.count === 0) {
     await db
-      .update(results)
-      .set({ moderationStatus: "approved", updatedAt: new Date() })
-      .where(
-        and(
-          eq(results.id, flag.resultId),
-          eq(results.moderationStatus, "pending_review")
-        )
-      );
+      .updateTable("results")
+      .set({ moderation_status: "approved", updated_at: new Date() })
+      .where("id", "=", flag.result_id!)
+      .where("moderation_status", "=", "pending_review")
+      .execute();
   }
 
   return c.json({ ok: true });
@@ -229,10 +215,11 @@ app.post("/flags/:flagId/remove", async (c) => {
   const adminId = c.get("userId");
   const db = getDb();
 
-  const [flag] = await db
-    .select()
-    .from(contentFlags)
-    .where(eq(contentFlags.id, flagId));
+  const flag = await db
+    .selectFrom("content_flags")
+    .selectAll()
+    .where("id", "=", flagId)
+    .executeTakeFirst();
 
   if (!flag) {
     return c.json({ error: "Flag not found" }, 404);
@@ -240,34 +227,33 @@ app.post("/flags/:flagId/remove", async (c) => {
 
   // Action the flag
   await db
-    .update(contentFlags)
+    .updateTable("content_flags")
     .set({
       status: "actioned",
-      resolvedBy: adminId,
-      resolvedAt: new Date(),
+      resolved_by: adminId,
+      resolved_at: new Date(),
     })
-    .where(eq(contentFlags.id, flagId));
+    .where("id", "=", flagId)
+    .execute();
 
   // Remove the result
   await db
-    .update(results)
-    .set({ moderationStatus: "removed", updatedAt: new Date() })
-    .where(eq(results.id, flag.resultId));
+    .updateTable("results")
+    .set({ moderation_status: "removed", updated_at: new Date() })
+    .where("id", "=", flag.result_id!)
+    .execute();
 
   // Resolve all other open flags on same result
   await db
-    .update(contentFlags)
+    .updateTable("content_flags")
     .set({
       status: "actioned",
-      resolvedBy: adminId,
-      resolvedAt: new Date(),
+      resolved_by: adminId,
+      resolved_at: new Date(),
     })
-    .where(
-      and(
-        eq(contentFlags.resultId, flag.resultId),
-        eq(contentFlags.status, "open")
-      )
-    );
+    .where("result_id", "=", flag.result_id!)
+    .where("status", "=", "open")
+    .execute();
 
   return c.json({ ok: true });
 });
@@ -279,27 +265,32 @@ app.post("/results/:resultId/flag", async (c) => {
   const db = getDb();
   const body = await c.req.json<{ reason?: string; setPendingReview?: boolean }>();
 
-  const [result] = await db
-    .select({ id: results.id })
-    .from(results)
-    .where(eq(results.id, resultId));
+  const result = await db
+    .selectFrom("results")
+    .select("id")
+    .where("id", "=", resultId)
+    .executeTakeFirst();
 
   if (!result) {
     return c.json({ error: "Result not found" }, 404);
   }
 
-  await db.insert(contentFlags).values({
-    resultId,
-    type: "auto_flagged",
-    reason: body.reason ?? null,
-    reporterId: adminId,
-  });
+  await db
+    .insertInto("content_flags")
+    .values({
+      result_id: resultId,
+      type: "auto_flagged",
+      reason: body.reason ?? null,
+      reporter_id: adminId,
+    })
+    .execute();
 
   if (body.setPendingReview) {
     await db
-      .update(results)
-      .set({ moderationStatus: "pending_review", updatedAt: new Date() })
-      .where(eq(results.id, resultId));
+      .updateTable("results")
+      .set({ moderation_status: "pending_review", updated_at: new Date() })
+      .where("id", "=", resultId)
+      .execute();
   }
 
   return c.json({ ok: true });
@@ -311,9 +302,10 @@ app.post("/results/:resultId/restore", async (c) => {
   const db = getDb();
 
   await db
-    .update(results)
-    .set({ moderationStatus: "approved", updatedAt: new Date() })
-    .where(eq(results.id, resultId));
+    .updateTable("results")
+    .set({ moderation_status: "approved", updated_at: new Date() })
+    .where("id", "=", resultId)
+    .execute();
 
   return c.json({ ok: true });
 });

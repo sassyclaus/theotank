@@ -1,5 +1,5 @@
-import { getDb } from "@theotank/rds/db";
-import { sql } from "drizzle-orm";
+import { getDb } from "@theotank/rds";
+import { sql } from "kysely";
 import type { CronJob } from "./types";
 
 export const progressLogCleanup: CronJob = {
@@ -9,7 +9,7 @@ export const progressLogCleanup: CronJob = {
   async run() {
     const db = getDb();
 
-    const deleted = await db.execute(sql`
+    const { rows: deleted } = await sql`
       DELETE FROM result_progress_logs
       WHERE result_id IN (
         SELECT id FROM results
@@ -17,7 +17,7 @@ export const progressLogCleanup: CronJob = {
           AND COALESCE(completed_at, updated_at) < NOW() - interval '7 days'
       )
       RETURNING id
-    `);
+    `.execute(db);
 
     return { affected: deleted.length };
   },

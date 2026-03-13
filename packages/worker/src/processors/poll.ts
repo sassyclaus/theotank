@@ -1,11 +1,8 @@
-import { getDb } from "@theotank/rds/db";
-import {
-  results,
-  teamSnapshots,
-  theologians,
-} from "@theotank/rds/schema";
-import { eq } from "drizzle-orm";
-import type { Job } from "@theotank/rds/schema";
+import { getDb } from "@theotank/rds";
+import type { Selectable } from "kysely";
+import type { Jobs } from "@theotank/rds";
+
+type Job = Selectable<Jobs>;
 import { ai } from "../lib/openai";
 import { logProgress } from "../progress";
 import { uploadJson } from "../s3";
@@ -58,22 +55,23 @@ export const processPoll = withResultContext("poll", async (job: Job, ctx: Resul
 
   const attribution = {
     result_id: resultId,
-    user_id: result.userId,
+    user_id: result.user_id,
     tool_type: "poll",
   };
 
   const algoConfig = rawConfig as PollAlgoConfig;
 
   // Load team snapshot → theologian details
-  if (!result.teamSnapshotId) {
+  if (!result.team_snapshot_id) {
     await failBoth(resultId, job.id, "No team snapshot linked to result");
     return;
   }
 
-  const [snapshot] = await db
-    .select()
-    .from(teamSnapshots)
-    .where(eq(teamSnapshots.id, result.teamSnapshotId));
+  const snapshot = await db
+    .selectFrom('team_snapshots')
+    .selectAll()
+    .where('id', '=', result.team_snapshot_id)
+    .executeTakeFirst();
   if (!snapshot) {
     await failBoth(resultId, job.id, "Team snapshot not found");
     return;
@@ -88,10 +86,11 @@ export const processPoll = withResultContext("poll", async (job: Job, ctx: Resul
 
   const theologianRows = await Promise.all(
     members.map(async (m) => {
-      const [t] = await db
-        .select()
-        .from(theologians)
-        .where(eq(theologians.id, m.theologianId));
+      const t = await db
+        .selectFrom('theologians')
+        .selectAll()
+        .where('id', '=', m.theologianId)
+        .executeTakeFirst();
       return t;
     }),
   );
@@ -102,7 +101,7 @@ export const processPoll = withResultContext("poll", async (job: Job, ctx: Resul
     return;
   }
 
-  const inputPayload = result.inputPayload as {
+  const inputPayload = result.input_payload as {
     question: string;
     options: string[];
   };
@@ -145,7 +144,7 @@ export const processPoll = withResultContext("poll", async (job: Job, ctx: Resul
           born: t.born,
           died: t.died,
           tagline: t.tagline,
-          voiceStyle: t.voiceStyle,
+          voiceStyle: t.voice_style,
           tradition: t.tradition,
         });
 
@@ -232,7 +231,7 @@ export const processPoll = withResultContext("poll", async (job: Job, ctx: Resul
                     position,
                     optionsText,
                     critiqueWarning,
-                    t.voiceStyle,
+                    t.voice_style,
                   ),
                 },
               ],
@@ -478,20 +477,21 @@ export const processPoll = withResultContext("poll", async (job: Job, ctx: Resul
   await logProgress(resultId, "Your poll results are ready!");
 
   await db
-    .update(results)
+    .updateTable('results')
     .set({
       status: "completed",
-      contentKey,
-      shareImageKey,
-      previewData: { type: "poll", bars: previewBars },
-      previewExcerpt,
-      models: {
+      content_key: contentKey,
+      share_image_key: shareImageKey,
+      preview_data: JSON.stringify({ type: "poll", bars: previewBars }),
+      preview_excerpt: previewExcerpt,
+      models: JSON.stringify({
         recall: recallModel,
         critique: critiqueModel,
         select: selectModel,
-      },
-      completedAt: now,
-      updatedAt: now,
+      }),
+      completed_at: now,
+      updated_at: now,
     })
-    .where(eq(results.id, resultId));
+    .where('id', '=', resultId)
+    .execute();
 });

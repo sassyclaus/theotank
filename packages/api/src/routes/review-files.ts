@@ -1,7 +1,5 @@
 import { Hono } from "hono";
-import { getDb } from "@theotank/rds/db";
-import { reviewFiles, jobs } from "@theotank/rds/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { getDb } from "@theotank/rds";
 import { presignPutUrl, putObject, deleteObject } from "../lib/s3";
 import type { AppEnv } from "../lib/types";
 
@@ -54,24 +52,26 @@ app.post("/upload-url", async (c) => {
 
   const db = getDb();
 
-  const [row] = await db
-    .insert(reviewFiles)
+  const row = await db
+    .insertInto("review_files")
     .values({
-      userId,
+      user_id: userId,
       label,
-      fileName: body.fileName,
-      contentType: body.contentType,
-      fileKey: "", // placeholder, set after we know the id
+      file_name: body.fileName,
+      content_type: body.contentType,
+      file_key: "", // placeholder, set after we know the id
       status: "pending",
     })
-    .returning();
+    .returningAll()
+    .executeTakeFirstOrThrow();
 
   const fileKey = `review-files/${userId}/${row.id}/${body.fileName}`;
 
   await db
-    .update(reviewFiles)
-    .set({ fileKey })
-    .where(eq(reviewFiles.id, row.id));
+    .updateTable("review_files")
+    .set({ file_key: fileKey })
+    .where("id", "=", row.id)
+    .execute();
 
   const uploadUrl = await presignPutUrl(fileKey, body.contentType);
 
@@ -100,30 +100,32 @@ app.post("/paste", async (c) => {
 
   const db = getDb();
 
-  const [row] = await db
-    .insert(reviewFiles)
+  const row = await db
+    .insertInto("review_files")
     .values({
-      userId,
+      user_id: userId,
       label,
-      fileName: "pasted-text.txt",
-      contentType: "text/plain",
-      fileKey: "", // placeholder
+      file_name: "pasted-text.txt",
+      content_type: "text/plain",
+      file_key: "", // placeholder
       status: "ready",
-      charCount,
+      char_count: charCount,
     })
-    .returning();
+    .returningAll()
+    .executeTakeFirstOrThrow();
 
   const textStorageKey = `review-files/${userId}/${row.id}/extracted/text.txt`;
 
   await putObject(textStorageKey, text, "text/plain");
 
   await db
-    .update(reviewFiles)
+    .updateTable("review_files")
     .set({
-      fileKey: textStorageKey,
-      textStorageKey,
+      file_key: textStorageKey,
+      text_storage_key: textStorageKey,
     })
-    .where(eq(reviewFiles.id, row.id));
+    .where("id", "=", row.id)
+    .execute();
 
   return c.json(
     {
@@ -142,10 +144,12 @@ app.post("/:id/confirm", async (c) => {
   const fileId = c.req.param("id");
   const db = getDb();
 
-  const [file] = await db
-    .select()
-    .from(reviewFiles)
-    .where(and(eq(reviewFiles.id, fileId), eq(reviewFiles.userId, userId)));
+  const file = await db
+    .selectFrom("review_files")
+    .selectAll()
+    .where("id", "=", fileId)
+    .where("user_id", "=", userId)
+    .executeTakeFirst();
 
   if (!file) {
     return c.json({ error: "Review file not found" }, 404);
@@ -156,22 +160,24 @@ app.post("/:id/confirm", async (c) => {
   }
 
   // Create job for text extraction
-  const [job] = await db
-    .insert(jobs)
+  const job = await db
+    .insertInto("jobs")
     .values({
       type: "review_file",
       payload: { reviewFileId: file.id },
     })
-    .returning();
+    .returningAll()
+    .executeTakeFirstOrThrow();
 
   await db
-    .update(reviewFiles)
+    .updateTable("review_files")
     .set({
       status: "uploaded",
-      jobId: job.id,
-      updatedAt: new Date(),
+      job_id: job.id,
+      updated_at: new Date(),
     })
-    .where(eq(reviewFiles.id, fileId));
+    .where("id", "=", fileId)
+    .execute();
 
   return c.json({ id: file.id, status: "uploaded", jobId: job.id });
 });
@@ -182,20 +188,21 @@ app.get("/", async (c) => {
   const db = getDb();
 
   const rows = await db
-    .select({
-      id: reviewFiles.id,
-      label: reviewFiles.label,
-      fileName: reviewFiles.fileName,
-      contentType: reviewFiles.contentType,
-      charCount: reviewFiles.charCount,
-      status: reviewFiles.status,
-      errorMessage: reviewFiles.errorMessage,
-      createdAt: reviewFiles.createdAt,
-      updatedAt: reviewFiles.updatedAt,
-    })
-    .from(reviewFiles)
-    .where(eq(reviewFiles.userId, userId))
-    .orderBy(desc(reviewFiles.createdAt));
+    .selectFrom("review_files")
+    .select([
+      "id",
+      "label",
+      "file_name",
+      "content_type",
+      "char_count",
+      "status",
+      "error_message",
+      "created_at",
+      "updated_at",
+    ])
+    .where("user_id", "=", userId)
+    .orderBy("created_at desc")
+    .execute();
 
   return c.json(rows);
 });
@@ -206,10 +213,12 @@ app.delete("/:id", async (c) => {
   const fileId = c.req.param("id");
   const db = getDb();
 
-  const [file] = await db
-    .select()
-    .from(reviewFiles)
-    .where(and(eq(reviewFiles.id, fileId), eq(reviewFiles.userId, userId)));
+  const file = await db
+    .selectFrom("review_files")
+    .selectAll()
+    .where("id", "=", fileId)
+    .where("user_id", "=", userId)
+    .executeTakeFirst();
 
   if (!file) {
     return c.json({ error: "Review file not found" }, 404);
@@ -217,14 +226,14 @@ app.delete("/:id", async (c) => {
 
   // Delete S3 objects (best-effort)
   try {
-    if (file.fileKey) await deleteObject(file.fileKey);
-    if (file.textStorageKey) await deleteObject(file.textStorageKey);
+    if (file.file_key) await deleteObject(file.file_key);
+    if (file.text_storage_key) await deleteObject(file.text_storage_key);
   } catch (err) {
     const { logger } = await import("../lib/logger");
-    logger.warn({ err, fileId, keys: [file.fileKey, file.textStorageKey] }, "S3 cleanup failed for review file deletion");
+    logger.warn({ err, fileId, keys: [file.file_key, file.text_storage_key] }, "S3 cleanup failed for review file deletion");
   }
 
-  await db.delete(reviewFiles).where(eq(reviewFiles.id, fileId));
+  await db.deleteFrom("review_files").where("id", "=", fileId).execute();
 
   return c.body(null, 204);
 });

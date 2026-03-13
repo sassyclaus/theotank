@@ -1,5 +1,5 @@
-import { getDb } from "@theotank/rds/db";
-import { sql } from "drizzle-orm";
+import { getDb } from "@theotank/rds";
+import { sql } from "kysely";
 import { logger } from "../lib/logger";
 import type { CronJob } from "./types";
 
@@ -12,7 +12,7 @@ export const staleJobRecovery: CronJob = {
   async run() {
     const db = getDb();
 
-    const retryable = await db.execute(sql`
+    const { rows: retryable } = await sql`
       UPDATE jobs
       SET
         status = 'pending',
@@ -24,9 +24,9 @@ export const staleJobRecovery: CronJob = {
         AND locked_at < NOW() - (${STALE_THRESHOLD_MS} || ' milliseconds')::interval
         AND attempts < max_attempts
       RETURNING id, type, attempts
-    `);
+    `.execute(db);
 
-    const exhausted = await db.execute(sql`
+    const { rows: exhausted } = await sql`
       UPDATE jobs
       SET
         status = 'failed',
@@ -37,7 +37,7 @@ export const staleJobRecovery: CronJob = {
         AND locked_at < NOW() - (${STALE_THRESHOLD_MS} || ' milliseconds')::interval
         AND attempts >= max_attempts
       RETURNING id, type, attempts
-    `);
+    `.execute(db);
 
     const affected = retryable.length + exhausted.length;
 

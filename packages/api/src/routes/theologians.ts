@@ -1,7 +1,6 @@
 import { Hono } from "hono";
-import { getDb } from "@theotank/rds/db";
-import { theologians, teams, teamMemberships } from "@theotank/rds/schema";
-import { eq, asc, and } from "drizzle-orm";
+import { getDb } from "@theotank/rds";
+import type { Theologians, Selectable } from "@theotank/rds";
 import { colorForTradition } from "../lib/tradition-colors";
 import { publicAssetUrlVersioned } from "../lib/s3";
 import type { AppEnv } from "../lib/types";
@@ -9,7 +8,7 @@ import type { AppEnv } from "../lib/types";
 const app = new Hono<AppEnv>();
 
 function shapeTheologian(
-  row: typeof theologians.$inferSelect,
+  row: Selectable<Theologians>,
   nativeTeamNames: string[],
 ) {
   return {
@@ -24,9 +23,9 @@ function shapeTheologian(
     color: colorForTradition(row.tradition),
     tagline: row.tagline,
     bio: row.bio,
-    keyWorks: row.keyWorks,
-    imageUrl: row.imageKey ? publicAssetUrlVersioned(row.imageKey, row.updatedAt) : null,
-    hasResearch: row.hasResearch,
+    keyWorks: row.key_works,
+    imageUrl: row.image_key ? publicAssetUrlVersioned(row.image_key, row.updated_at) : null,
+    hasResearch: row.has_research,
     nativeTeams: nativeTeamNames,
   };
 }
@@ -36,25 +35,24 @@ app.get("/", async (c) => {
   const db = getDb();
 
   const allTheologians = await db
-    .select()
-    .from(theologians)
-    .orderBy(asc(theologians.born));
+    .selectFrom("theologians")
+    .selectAll()
+    .orderBy("born asc")
+    .execute();
 
   // Batch-load native team memberships
   const allMemberships = await db
-    .select({
-      theologianId: teamMemberships.theologianId,
-      teamName: teams.name,
-    })
-    .from(teamMemberships)
-    .innerJoin(teams, eq(teamMemberships.teamId, teams.id))
-    .where(eq(teams.isNative, true));
+    .selectFrom("team_memberships")
+    .innerJoin("teams", "team_memberships.team_id", "teams.id")
+    .select(["team_memberships.theologian_id", "teams.name as team_name"])
+    .where("teams.is_native", "=", true)
+    .execute();
 
   const teamsByTheologian = new Map<string, string[]>();
   for (const m of allMemberships) {
-    const existing = teamsByTheologian.get(m.theologianId) ?? [];
-    existing.push(m.teamName);
-    teamsByTheologian.set(m.theologianId, existing);
+    const existing = teamsByTheologian.get(m.theologian_id) ?? [];
+    existing.push(m.team_name);
+    teamsByTheologian.set(m.theologian_id, existing);
   }
 
   const result = allTheologians.map((t) =>
@@ -69,31 +67,26 @@ app.get("/:slug", async (c) => {
   const slug = c.req.param("slug");
   const db = getDb();
 
-  const rows = await db
-    .select()
-    .from(theologians)
-    .where(eq(theologians.slug, slug))
-    .limit(1);
+  const theologian = await db
+    .selectFrom("theologians")
+    .selectAll()
+    .where("slug", "=", slug)
+    .executeTakeFirst();
 
-  if (rows.length === 0) {
+  if (!theologian) {
     return c.json({ error: "Theologian not found" }, 404);
   }
 
-  const theologian = rows[0];
-
   // Load native teams for this theologian
   const membershipRows = await db
-    .select({ teamName: teams.name })
-    .from(teamMemberships)
-    .innerJoin(teams, eq(teamMemberships.teamId, teams.id))
-    .where(
-      and(
-        eq(teamMemberships.theologianId, theologian.id),
-        eq(teams.isNative, true),
-      ),
-    );
+    .selectFrom("team_memberships")
+    .innerJoin("teams", "team_memberships.team_id", "teams.id")
+    .select(["teams.name as team_name"])
+    .where("team_memberships.theologian_id", "=", theologian.id)
+    .where("teams.is_native", "=", true)
+    .execute();
 
-  const nativeTeamNames = membershipRows.map((m) => m.teamName);
+  const nativeTeamNames = membershipRows.map((m) => m.team_name);
 
   return c.json(shapeTheologian(theologian, nativeTeamNames));
 });

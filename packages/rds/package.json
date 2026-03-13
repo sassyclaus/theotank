@@ -4,22 +4,22 @@
   "version": "0.0.1",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts",
-    "./schema": "./src/schema/index.ts",
-    "./db": "./src/db.ts"
+    ".": "./src/index.ts"
   },
   "scripts": {
-    "db:generate": "bunx drizzle-kit generate",
-    "db:migrate": "bunx drizzle-kit migrate",
-    "db:studio": "bunx drizzle-kit studio"
+    "db:migrate": "bun run src/kysely-migrate.ts",
+    "db:migrate:create": "bun run src/create-migration.ts",
+    "db:generate-types": "kysely-codegen --out-file ./src/kysely-types.ts --dialect postgres"
   },
   "dependencies": {
-    "drizzle-orm": "^0.38.0",
+    "kysely": "^0.28.11",
+    "kysely-postgres-js": "^3.0.0",
     "postgres": "^3.4.0"
   },
   "devDependencies": {
     "@types/bun": "^1.2.0",
-    "drizzle-kit": "^0.30.0",
+    "kysely-codegen": "^0.20.0",
+    "pg": "^8.20.0",
     "typescript": "~5.7.0"
   }
 }

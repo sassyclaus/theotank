@@ -1,7 +1,6 @@
 import { Hono } from "hono";
-import { getDb } from "@theotank/rds/db";
-import { users, usageLogs, usageOverrides, results } from "@theotank/rds/schema";
-import { eq, desc, sql, and, gte } from "drizzle-orm";
+import { getDb } from "@theotank/rds";
+import { sql } from "kysely";
 import { createClerkClient } from "@clerk/backend";
 import { getUserUsageSummary } from "../../lib/usage-limits";
 import type { AppEnv } from "../../lib/types";
@@ -13,9 +12,10 @@ app.get("/", async (c) => {
   const db = getDb();
 
   const userRows = await db
-    .select()
-    .from(users)
-    .orderBy(desc(users.createdAt));
+    .selectFrom("users")
+    .selectAll()
+    .orderBy("created_at", "desc")
+    .execute();
 
   if (userRows.length === 0) {
     return c.json([]);
@@ -24,47 +24,49 @@ app.get("/", async (c) => {
   // Rolling 30-day usage counts per user per tool type
   const windowStart = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
   const usageCounts = await db
-    .select({
-      userId: usageLogs.userId,
-      toolType: usageLogs.toolType,
-      count: sql<number>`count(*)::int`,
-    })
-    .from(usageLogs)
-    .where(gte(usageLogs.createdAt, windowStart))
-    .groupBy(usageLogs.userId, usageLogs.toolType);
+    .selectFrom("usage_logs")
+    .select([
+      "user_id",
+      "tool_type",
+      sql<number>`count(*)::int`.as("count"),
+    ])
+    .where("created_at", ">=", windowStart)
+    .groupBy(["user_id", "tool_type"])
+    .execute();
 
   const usageByUser = new Map<string, Record<string, number>>();
   for (const row of usageCounts) {
-    if (!usageByUser.has(row.userId)) {
-      usageByUser.set(row.userId, {});
+    if (!usageByUser.has(row.user_id)) {
+      usageByUser.set(row.user_id, {});
     }
-    usageByUser.get(row.userId)![row.toolType] = row.count;
+    usageByUser.get(row.user_id)![row.tool_type] = row.count;
   }
 
   // Count results per user (join on results.userId = users.clerkId)
   const resultCounts = await db
-    .select({
-      userId: results.userId,
-      count: sql<number>`count(*)::int`,
-    })
-    .from(results)
-    .groupBy(results.userId);
+    .selectFrom("results")
+    .select([
+      "user_id",
+      sql<number>`count(*)::int`.as("count"),
+    ])
+    .groupBy("user_id")
+    .execute();
 
   const resultCountByClerkId = new Map<string, number>();
   for (const rc of resultCounts) {
-    resultCountByClerkId.set(rc.userId, rc.count);
+    resultCountByClerkId.set(rc.user_id, rc.count);
   }
 
   const shaped = userRows.map((u) => ({
     id: u.id,
-    clerkId: u.clerkId,
+    clerkId: u.clerk_id,
     email: u.email,
     name: u.name,
-    imageUrl: u.imageUrl,
+    imageUrl: u.image_url,
     tier: u.tier,
     usage: usageByUser.get(u.id) ?? {},
-    resultCount: resultCountByClerkId.get(u.clerkId) ?? 0,
-    createdAt: u.createdAt.toISOString(),
+    resultCount: resultCountByClerkId.get(u.clerk_id) ?? 0,
+    createdAt: u.created_at.toISOString(),
   }));
 
   return c.json(shaped);
@@ -75,7 +77,12 @@ app.get("/:id", async (c) => {
   const id = c.req.param("id");
   const db = getDb();
 
-  const [user] = await db.select().from(users).where(eq(users.id, id));
+  const user = await db
+    .selectFrom("users")
+    .selectAll()
+    .where("id", "=", id)
+    .executeTakeFirst();
+
   if (!user) {
     return c.json({ error: "User not found" }, 404);
   }
@@ -85,19 +92,20 @@ app.get("/:id", async (c) => {
   if (secretKey) {
     try {
       const clerk = createClerkClient({ secretKey });
-      const clerkUser = await clerk.users.getUser(user.clerkId);
+      const clerkUser = await clerk.users.getUser(user.clerk_id);
       const email = clerkUser.emailAddresses?.[0]?.emailAddress ?? null;
       const name = [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ") || null;
       const imageUrl = clerkUser.imageUrl ?? null;
 
-      if (email !== user.email || name !== user.name || imageUrl !== user.imageUrl) {
+      if (email !== user.email || name !== user.name || imageUrl !== user.image_url) {
         await db
-          .update(users)
-          .set({ email, name, imageUrl, updatedAt: new Date() })
-          .where(eq(users.id, id));
+          .updateTable("users")
+          .set({ email, name, image_url: imageUrl, updated_at: new Date() })
+          .where("id", "=", id)
+          .execute();
         user.email = email;
         user.name = name;
-        user.imageUrl = imageUrl;
+        user.image_url = imageUrl;
       }
     } catch {
       // Clerk lookup failed — continue with existing data
@@ -109,32 +117,27 @@ app.get("/:id", async (c) => {
 
   // Recent results
   const userResults = await db
-    .select({
-      id: results.id,
-      toolType: results.toolType,
-      title: results.title,
-      status: results.status,
-      createdAt: results.createdAt,
-    })
-    .from(results)
-    .where(eq(results.userId, user.clerkId))
-    .orderBy(desc(results.createdAt))
-    .limit(50);
+    .selectFrom("results")
+    .select(["id", "tool_type", "title", "status", "created_at"])
+    .where("user_id", "=", user.clerk_id)
+    .orderBy("created_at", "desc")
+    .limit(50)
+    .execute();
 
   return c.json({
     id: user.id,
-    clerkId: user.clerkId,
+    clerkId: user.clerk_id,
     email: user.email,
     name: user.name,
-    imageUrl: user.imageUrl,
+    imageUrl: user.image_url,
     tier: user.tier,
     usage: usageSummary.tools,
     results: userResults.map((r) => ({
       ...r,
-      createdAt: r.createdAt.toISOString(),
+      createdAt: r.created_at.toISOString(),
     })),
-    createdAt: user.createdAt.toISOString(),
-    updatedAt: user.updatedAt.toISOString(),
+    createdAt: user.created_at.toISOString(),
+    updatedAt: user.updated_at.toISOString(),
   });
 });
 
@@ -149,15 +152,21 @@ app.put("/:id/tier", async (c) => {
 
   const db = getDb();
 
-  const [user] = await db.select({ id: users.id }).from(users).where(eq(users.id, id));
+  const user = await db
+    .selectFrom("users")
+    .select("id")
+    .where("id", "=", id)
+    .executeTakeFirst();
+
   if (!user) {
     return c.json({ error: "User not found" }, 404);
   }
 
   await db
-    .update(users)
-    .set({ tier: body.tier, updatedAt: new Date() })
-    .where(eq(users.id, id));
+    .updateTable("users")
+    .set({ tier: body.tier, updated_at: new Date() })
+    .where("id", "=", id)
+    .execute();
 
   return c.json({ tier: body.tier });
 });
@@ -179,32 +188,35 @@ app.put("/:id/usage-override", async (c) => {
 
   const db = getDb();
 
-  const [user] = await db.select({ id: users.id }).from(users).where(eq(users.id, id));
+  const user = await db
+    .selectFrom("users")
+    .select("id")
+    .where("id", "=", id)
+    .executeTakeFirst();
+
   if (!user) {
     return c.json({ error: "User not found" }, 404);
   }
 
-  const values = {
-    userId: id,
-    toolType: body.toolType,
-    monthlyLimit: body.monthlyLimit,
-    reason: body.reason ?? null,
-    adminId: adminClerkId,
-    expiresAt: body.expiresAt ? new Date(body.expiresAt) : null,
-  };
-
   await db
-    .insert(usageOverrides)
-    .values(values)
-    .onConflictDoUpdate({
-      target: [usageOverrides.userId, usageOverrides.toolType],
-      set: {
-        monthlyLimit: body.monthlyLimit,
+    .insertInto("usage_overrides")
+    .values({
+      user_id: id,
+      tool_type: body.toolType,
+      monthly_limit: body.monthlyLimit,
+      reason: body.reason ?? null,
+      admin_id: adminClerkId,
+      expires_at: body.expiresAt ? new Date(body.expiresAt) : null,
+    })
+    .onConflict((oc) =>
+      oc.columns(["user_id", "tool_type"]).doUpdateSet({
+        monthly_limit: body.monthlyLimit,
         reason: body.reason ?? null,
-        adminId: adminClerkId,
-        expiresAt: body.expiresAt ? new Date(body.expiresAt) : null,
-      },
-    });
+        admin_id: adminClerkId,
+        expires_at: body.expiresAt ? new Date(body.expiresAt) : null,
+      })
+    )
+    .execute();
 
   return c.json({ ok: true });
 });
@@ -216,13 +228,10 @@ app.delete("/:id/usage-override/:toolType", async (c) => {
   const db = getDb();
 
   await db
-    .delete(usageOverrides)
-    .where(
-      and(
-        eq(usageOverrides.userId, id),
-        eq(usageOverrides.toolType, toolType),
-      ),
-    );
+    .deleteFrom("usage_overrides")
+    .where("user_id", "=", id)
+    .where("tool_type", "=", toolType)
+    .execute();
 
   return c.json({ ok: true });
 });
@@ -234,37 +243,39 @@ app.get("/:id/usage-history", async (c) => {
   const db = getDb();
 
   // Verify user exists
-  const [user] = await db.select({ id: users.id }).from(users).where(eq(users.id, id));
+  const user = await db
+    .selectFrom("users")
+    .select("id")
+    .where("id", "=", id)
+    .executeTakeFirst();
+
   if (!user) {
     return c.json({ error: "User not found" }, 404);
   }
 
-  const conditions = [eq(usageLogs.userId, id)];
+  let query = db
+    .selectFrom("usage_logs")
+    .select(["id", "tool_type", "result_id", "team_size", "created_at"])
+    .where("user_id", "=", id);
+
   if (toolType) {
-    conditions.push(eq(usageLogs.toolType, toolType));
+    query = query.where("tool_type", "=", toolType);
   }
 
-  const entries = await db
-    .select({
-      id: usageLogs.id,
-      toolType: usageLogs.toolType,
-      resultId: usageLogs.resultId,
-      teamSize: usageLogs.teamSize,
-      createdAt: usageLogs.createdAt,
-    })
-    .from(usageLogs)
-    .where(and(...conditions))
-    .orderBy(desc(usageLogs.createdAt))
-    .limit(100);
+  const entries = await query
+    .orderBy("created_at", "desc")
+    .limit(100)
+    .execute();
 
   // Fetch result titles for linked entries
-  const resultIds = entries.filter((e) => e.resultId).map((e) => e.resultId!);
+  const resultIds = entries.filter((e) => e.result_id).map((e) => e.result_id!);
   let resultTitles = new Map<string, string>();
   if (resultIds.length > 0) {
     const resultRows = await db
-      .select({ id: results.id, title: results.title })
-      .from(results)
-      .where(sql`${results.id} = ANY(${resultIds})`);
+      .selectFrom("results")
+      .select(["id", "title"])
+      .where("id", "in", resultIds)
+      .execute();
     for (const r of resultRows) {
       resultTitles.set(r.id, r.title);
     }
@@ -273,11 +284,11 @@ app.get("/:id/usage-history", async (c) => {
   return c.json({
     entries: entries.map((e) => ({
       id: e.id,
-      toolType: e.toolType,
-      resultId: e.resultId,
-      resultTitle: e.resultId ? resultTitles.get(e.resultId) ?? null : null,
-      teamSize: e.teamSize,
-      createdAt: e.createdAt.toISOString(),
+      toolType: e.tool_type,
+      resultId: e.result_id,
+      resultTitle: e.result_id ? resultTitles.get(e.result_id) ?? null : null,
+      teamSize: e.team_size,
+      createdAt: e.created_at.toISOString(),
     })),
   });
 });

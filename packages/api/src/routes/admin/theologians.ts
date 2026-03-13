@@ -1,13 +1,12 @@
 import { Hono } from "hono";
-import { getDb } from "@theotank/rds/db";
-import { theologians } from "@theotank/rds/schema";
-import { eq, asc } from "drizzle-orm";
+import { getDb } from "@theotank/rds";
+import type { Theologians, Selectable } from "@theotank/rds";
 import { presignPublicPutUrl, publicAssetUrlVersioned } from "../../lib/s3";
 import type { AppEnv } from "../../lib/types";
 
 const app = new Hono<AppEnv>();
 
-type TheologianRow = typeof theologians.$inferSelect;
+type TheologianRow = Selectable<Theologians>;
 
 const completenessFields: (keyof TheologianRow)[] = [
   "name",
@@ -16,9 +15,9 @@ const completenessFields: (keyof TheologianRow)[] = [
   "born",
   "era",
   "tradition",
-  "voiceStyle",
-  "imageKey",
-  "keyWorks",
+  "voice_style",
+  "image_key",
+  "key_works",
 ];
 
 function profileCompleteness(row: TheologianRow): "full" | "partial" | "minimal" {
@@ -48,15 +47,15 @@ function shapeAdmin(row: TheologianRow) {
     died: row.died,
     era: row.era,
     tradition: row.tradition,
-    languagePrimary: row.languagePrimary,
-    voiceStyle: row.voiceStyle,
-    keyWorks: row.keyWorks,
-    imageKey: row.imageKey,
-    imageUrl: row.imageKey ? publicAssetUrlVersioned(row.imageKey, row.updatedAt) : null,
-    hasResearch: row.hasResearch,
+    languagePrimary: row.language_primary,
+    voiceStyle: row.voice_style,
+    keyWorks: row.key_works,
+    imageKey: row.image_key,
+    imageUrl: row.image_key ? publicAssetUrlVersioned(row.image_key, row.updated_at) : null,
+    hasResearch: row.has_research,
     profileCompleteness: profileCompleteness(row),
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
+    createdAt: row.created_at.toISOString(),
+    updatedAt: row.updated_at.toISOString(),
   };
 }
 
@@ -71,9 +70,10 @@ function slugify(name: string): string {
 app.get("/", async (c) => {
   const db = getDb();
   const rows = await db
-    .select()
-    .from(theologians)
-    .orderBy(asc(theologians.name));
+    .selectFrom("theologians")
+    .selectAll()
+    .orderBy("name asc")
+    .execute();
   return c.json(rows.map(shapeAdmin));
 });
 
@@ -81,10 +81,11 @@ app.get("/", async (c) => {
 app.get("/:id", async (c) => {
   const id = c.req.param("id");
   const db = getDb();
-  const [row] = await db
-    .select()
-    .from(theologians)
-    .where(eq(theologians.id, id));
+  const row = await db
+    .selectFrom("theologians")
+    .selectAll()
+    .where("id", "=", id)
+    .executeTakeFirst();
 
   if (!row) {
     return c.json({ error: "Theologian not found" }, 404);
@@ -117,8 +118,8 @@ app.post("/", async (c) => {
     .toUpperCase()
     .slice(0, 2);
 
-  const [row] = await db
-    .insert(theologians)
+  const row = await db
+    .insertInto("theologians")
     .values({
       slug,
       name: body.name,
@@ -127,13 +128,14 @@ app.post("/", async (c) => {
       tagline: body.tagline ?? null,
       born: body.born ?? null,
       died: body.died ?? null,
-      era: body.era as any ?? null,
-      tradition: body.tradition as any ?? null,
-      languagePrimary: body.languagePrimary ?? null,
-      voiceStyle: body.voiceStyle ?? null,
-      keyWorks: body.keyWorks ?? [],
+      era: (body.era as any) ?? null,
+      tradition: (body.tradition as any) ?? null,
+      language_primary: body.languagePrimary ?? null,
+      voice_style: body.voiceStyle ?? null,
+      key_works: body.keyWorks ?? [],
     })
-    .returning();
+    .returningAll()
+    .executeTakeFirstOrThrow();
 
   return c.json(shapeAdmin(row), 201);
 });
@@ -144,27 +146,28 @@ app.put("/:id", async (c) => {
   const body = await c.req.json<Record<string, unknown>>();
   const db = getDb();
 
-  const [existing] = await db
-    .select()
-    .from(theologians)
-    .where(eq(theologians.id, id));
+  const existing = await db
+    .selectFrom("theologians")
+    .selectAll()
+    .where("id", "=", id)
+    .executeTakeFirst();
 
   if (!existing) {
     return c.json({ error: "Theologian not found" }, 404);
   }
 
-  const updates: Record<string, unknown> = { updatedAt: new Date() };
+  const updates: Record<string, unknown> = { updated_at: new Date() };
 
-  const textFields = [
-    "name",
-    "tagline",
-    "bio",
-    "voiceStyle",
-    "languagePrimary",
-    "imageKey",
-  ] as const;
-  for (const key of textFields) {
-    if (key in body) updates[key] = body[key];
+  const fieldMap: Record<string, string> = {
+    name: "name",
+    tagline: "tagline",
+    bio: "bio",
+    voiceStyle: "voice_style",
+    languagePrimary: "language_primary",
+    imageKey: "image_key",
+  };
+  for (const [camel, snake] of Object.entries(fieldMap)) {
+    if (camel in body) updates[snake] = body[camel];
   }
   const intFields = ["born", "died"] as const;
   for (const key of intFields) {
@@ -172,8 +175,8 @@ app.put("/:id", async (c) => {
   }
   if ("era" in body) updates.era = body.era;
   if ("tradition" in body) updates.tradition = body.tradition;
-  if ("keyWorks" in body) updates.keyWorks = body.keyWorks;
-  if ("hasResearch" in body) updates.hasResearch = body.hasResearch;
+  if ("keyWorks" in body) updates.key_works = body.keyWorks;
+  if ("hasResearch" in body) updates.has_research = body.hasResearch;
 
   // Recalculate slug if name changed
   if ("name" in body && typeof body.name === "string") {
@@ -186,11 +189,12 @@ app.put("/:id", async (c) => {
       .slice(0, 2);
   }
 
-  const [row] = await db
-    .update(theologians)
+  const row = await db
+    .updateTable("theologians")
     .set(updates)
-    .where(eq(theologians.id, id))
-    .returning();
+    .where("id", "=", id)
+    .returningAll()
+    .executeTakeFirstOrThrow();
 
   return c.json(shapeAdmin(row));
 });
@@ -209,10 +213,11 @@ app.post("/:id/upload-url", async (c) => {
   }
 
   const db = getDb();
-  const [row] = await db
-    .select({ slug: theologians.slug })
-    .from(theologians)
-    .where(eq(theologians.id, id));
+  const row = await db
+    .selectFrom("theologians")
+    .select(["slug"])
+    .where("id", "=", id)
+    .executeTakeFirst();
 
   if (!row) {
     return c.json({ error: "Theologian not found" }, 404);
